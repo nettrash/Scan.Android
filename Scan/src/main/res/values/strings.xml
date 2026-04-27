@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Scan</string>
+
+    <string name="tab_scan">Scan</string>
+    <string name="tab_generate">Generate</string>
+    <string name="tab_history">History</string>
+
+    <string name="camera_permission_rationale">Scan needs the camera to read 1D and 2D barcodes such as QR, EAN, UPC, Code 128, PDF417, Aztec and Data Matrix.</string>
+    <string name="camera_permission_denied">Camera access was denied. Enable it in Settings to scan codes.</string>
+</resources>
