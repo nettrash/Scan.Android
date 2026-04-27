@@ -25,8 +25,8 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -104,7 +104,7 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
         }
 
         is ScanPayload.Sms -> {
-            ActionButton(Icons.Filled.Message, "Send SMS to ${payload.number}") {
+            ActionButton(Icons.AutoMirrored.Filled.Message, "Send SMS to ${payload.number}") {
                 val uri = StringBuilder("sms:${payload.number}")
                 payload.body?.let { uri.append("?body=").append(Uri.encode(it)) }
                 openUri(context, uri.toString())

@@ -22,8 +22,8 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Person
@@ -48,7 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import me.nettrash.scan.data.db.ScanRecord
 import me.nettrash.scan.data.payload.ScanPayload
 import me.nettrash.scan.data.payload.ScanPayloadParser
@@ -161,7 +161,7 @@ internal fun iconForPayload(payload: ScanPayload): ImageVector = when (payload) 
     is ScanPayload.Url -> Icons.Filled.OpenInBrowser
     is ScanPayload.Email -> Icons.Filled.Email
     is ScanPayload.Phone -> Icons.Filled.Call
-    is ScanPayload.Sms -> Icons.Filled.Message
+    is ScanPayload.Sms -> Icons.AutoMirrored.Filled.Message
     is ScanPayload.Wifi -> Icons.Filled.Wifi
     is ScanPayload.Geo -> Icons.Filled.Map
     is ScanPayload.Contact -> Icons.Filled.Person

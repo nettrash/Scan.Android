@@ -109,6 +109,31 @@ To install on a connected device or emulator:
 ./gradlew :Scan:installDebug
 ```
 
+## Testing
+
+Unit tests live under `Scan/src/test/java/me/nettrash/scan/` and mirror the iOS `ScanTests/ScanTests.swift` suite line for line — same fixtures, same assertions, against the Kotlin port of every parser. They run on the JVM with **JUnit 4 + Robolectric** (Robolectric provides a real `android.net.Uri` and `android.util.Base64` so the parsers that touch those APIs exercise the same code paths as on a device).
+
+Coverage:
+
+- `data/payload/ScanPayloadParserTest` — URL, Wi-Fi (with escaped semicolon), `mailto:` / `tel:` / `sms:` / `geo:`, vCard 3.0, MECARD, EAN-13 product code, kind labels, EPC-priority-over-text.
+- `data/payload/BankPaymentParserTest` — EPC SEPA Payment, Russian unified payment (ST00012, kopecks → rubles), FNS retail receipt, EMVCo Merchant QR (top-level + nested-template drilling for Pix), Swiss QR-bill (31-line minimum), Serbian SUF receipt URL, Serbian NBS IPS QR.
+- `data/payload/CryptoUriParserTest` — Bitcoin (BIP-21), Ethereum with `@chainId` (EIP-681), Lightning (BOLT-11).
+- `data/payload/CalendarParserTest` — VEVENT (UTC `Z` suffix), all-day event (`VALUE=DATE`).
+- `data/payload/RegionalPaymentParserTest` — UPI (`upi://pay`), Czech SPD (with `+`-as-space), Slovak Pay by Square recognition + lookalike rejection, Bezahlcode (`bank://`), Swish (base64-JSON `data=` blob), Vipps.
+- `generator/CodeComposerTest` — vCard composer + parser round-trip, Wi-Fi composer + parser round-trip, open-network composer omits the `P:` field.
+
+Run from the terminal:
+
+```sh
+./gradlew :Scan:testDebugUnitTest                     # the standard bucket
+./gradlew :Scan:test                                  # both debug + release
+./gradlew :Scan:test --tests "*BankPaymentParserTest" # one class
+```
+
+In Android Studio, right-click `Scan/src/test/java` in the Project pane → **Run 'Tests in 'java''**, or click the green ▶ in the gutter next to a test class / method.
+
+The unit-test bucket doesn't trigger the `assemble*` / `bundle*` lifecycle, so running tests does **not** bump `versionCode`.
+
 ## Project structure
 
 ```
@@ -163,6 +188,7 @@ Scan.Android/
 - **CameraX + ML Kit on the analyzer thread.** `BarcodeAnalyzer` is bound as an `ImageAnalysis.Analyzer` with `STRATEGY_KEEP_ONLY_LATEST` and runs on a single-thread executor. Successful decodes are forwarded to the view model on the main thread; the dedupe filter is checked there to avoid races on the dedupe state.
 - **Room exposes `Flow<List<ScanRecord>>`** which the history view model collects with `stateIn(SharingStarted.Eagerly)` so the list survives configuration changes without re-querying.
 - **Privileged actions are intent-launched, never directly performed.** Add-to-Contacts and Add-to-Calendar both go through the system-provided edit forms; the app never holds `READ_CONTACTS` or `READ_CALENDAR`. Save-to-Photos uses scoped storage via `MediaStore.Images.Media.RELATIVE_PATH = "Pictures/Scan"`.
+- **`versionCode` is auto-bumped after every successful build.** Mirrors the iOS app's `agvtool bump` post-build action. The current value lives in `version.properties` at the repo root (tracked in git); after each successful `assembleDebug` / `assembleRelease` / `bundleDebug` / `bundleRelease` a `doLast` finalizer rewrites the file with `versionCode + 1`. The new value is effective on the *next* build. Pass `-PnoBump` to skip the bump for one invocation; the GitHub Actions release workflow uses this so CI runs don't produce uncommitted file diffs on the runner. Commit `version.properties` along with your release so the bump propagates between machines. `versionName` defaults to `1.0` but can be overridden with `-PversionName=1.2.3` — the release workflow does this from the pushed git tag (`v1.2.3` → `1.2.3`).
 
 ## Roadmap
 

@@ -1,0 +1,1 @@
+Smart QR & barcode reader. Decodes Wi-Fi, payments, contacts. Generate too.

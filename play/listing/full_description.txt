@@ -1,0 +1,57 @@
+Scan reads and generates the common 1D and 2D barcodes — and understands what's actually inside the code, not just the raw text.
+
+Point the camera at a Wi-Fi QR and you'll see the network name, security type, and a one-tap shortcut to Wi-Fi Settings. Scan a SEPA invoice and you get the IBAN, beneficiary, and amount as separate copyable rows. Scan a contact card and the system "New Contact" form opens pre-filled. Scan a calendar event and the "Add Event" sheet appears with the title, location, and times in your time zone.
+
+PRIVATE BY DESIGN
+
+Scan does not collect, transmit, or share any data. The barcode model runs entirely on-device — camera frames are analysed in memory and never written to disk or sent over the network. The history is stored locally in the app's private database. No accounts, no telemetry, no advertising SDKs, no trackers.
+
+LIVE SCANNING
+
+• QR, Aztec, PDF417, Data Matrix
+• EAN-8, EAN-13, UPC-A, UPC-E
+• Code 39, Code 93, Code 128, ITF, Codabar
+• Decode any of those from a photo in your gallery — Android's Photo Picker, no extra permission required
+• Torch toggle and a corner-bracket reticle that snaps to the detected code
+
+SMART RESULT SHEET
+
+Scan understands these payload formats and surfaces each field as a tap-to-copy row:
+
+• Web — URL, mailto, tel, sms / smsto
+• Wi-Fi — SSID, password, security, hidden flag
+• Location — geo: links opened in Maps
+• Contact — vCard 3.0 and MECARD
+• Calendar — iCalendar VEVENT (UTC, time-zone, all-day)
+• Authentication — otpauth:// for authenticator apps
+• Retail — EAN / UPC / ITF product codes
+• Cryptocurrency — Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11)
+• Bank payments — EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill, Czech SPD, Slovak Pay by Square, Russian unified payment (ST00012 / ST00011), EMVCo Merchant QR with drill-down for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS, Indian UPI, Bezahlcode, Serbian NBS IPS QR (Prenesi)
+• Mobile-payment apps — Swish, Vipps, MobilePay, Bizum, iDEAL
+• Receipts — Russian FNS retail receipt, Serbian SUF fiscal receipt
+
+SMART ACTIONS
+
+• Open URLs in your browser
+• Compose email, call, send SMS via the right system app
+• Open Wi-Fi settings, copy the password
+• Open coordinates in Maps
+• Add a vCard to Contacts via the system editor
+• Add an iCalendar event to your calendar
+• Open crypto / UPI / mobile-payment URIs in any installed wallet or banking app
+• Verify a Serbian fiscal receipt on the official PURS page
+• Copy any field, share the raw payload via the system share sheet
+
+GENERATE TAB
+
+Build your own codes from structured input:
+
+• Text, URL, Contact (emits a clean vCard 3.0), Wi-Fi (emits a standard WIFI: payload with proper escaping)
+• Symbologies — QR, Aztec, PDF417, Code 128
+• Save the rendered PNG to your gallery, share it, or copy the encoded string
+
+HISTORY TAB
+
+Saved scans live in a local searchable list. Each entry has an editable note, the original symbology, the parsed payload type, and all the same smart actions.
+
+Free, ad-free, tracker-free.
