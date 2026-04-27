@@ -63,7 +63,7 @@ A dedicated **Generate** tab builds 1D / 2D codes from structured input via ZXin
 
 ### App icon
 
-The launcher icon mirrors the iOS asset: a real, scannable QR code that decodes to `https://nettrash.me`, framed by amber viewfinder corner brackets on a navy gradient. Packaged as an Android adaptive icon — the QR + brackets are extracted onto a transparent foreground PNG (per-density `mipmap-*/ic_launcher_foreground.png`, 108–432 px) and the deep-blue radial gradient background is a vector drawable (`drawable/ic_launcher_background.xml`). Legacy `ic_launcher.png` and round `ic_launcher_round.png` are also generated for pre-Android 8 launchers.
+The launcher icon takes the QR motif from the iOS asset (a real, scannable QR code that decodes to `https://nettrash.me`) and presents it on a deep-blue radial gradient. The yellow viewfinder brackets from the iOS icon are intentionally omitted on Android — they fought with the various launcher mask shapes (squircle, teardrop, circle) which clipped one or two of the four brackets unevenly. Packaged as an adaptive icon: the cleaned QR is the foreground (transparent-background per-density PNGs at `mipmap-*/ic_launcher_foreground.png`, 108–432 px) and the gradient is a vector drawable (`drawable/ic_launcher_background.xml`). Legacy `ic_launcher.png` and round `ic_launcher_round.png` are composed at build-time from the same two layers so pre-Android 8 launchers see the identical look.
 
 ## Requirements
 
