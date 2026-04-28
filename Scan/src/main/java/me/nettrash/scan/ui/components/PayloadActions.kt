@@ -94,7 +94,13 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
                 payload.body?.let { q += "body=" + Uri.encode(it) }
                 val tail = if (q.isEmpty()) "" else "?" + q.joinToString("&")
                 val uri = Uri.parse("mailto:${payload.address}$tail")
-                context.startActivity(Intent(Intent.ACTION_SENDTO, uri))
+                // ACTION_SENDTO mailto: throws ActivityNotFoundException on
+                // devices/emulators without a mail app — wrap so we just
+                // toast instead of crashing the app.
+                runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, uri)) }
+                    .onFailure {
+                        Toast.makeText(context, "No email app available.", Toast.LENGTH_SHORT).show()
+                    }
             }
         }
 
@@ -153,7 +159,11 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
             }
             c.emails.forEach { email ->
                 ActionButton(Icons.Filled.Email, email) {
-                    context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")))
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email")))
+                    }.onFailure {
+                        Toast.makeText(context, "No email app available.", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             c.urls.forEach { u ->

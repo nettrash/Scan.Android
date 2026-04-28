@@ -210,6 +210,31 @@ dependencies {
     testImplementation(libs.truth)
 }
 
+// ---- IDE compatibility: `unitTestClasses` alias ------------------------
+//
+// AGP 9 stopped creating the legacy aggregate `unitTestClasses` task and
+// only registers the variant-specific compile tasks
+// (`compileDebugUnitTestKotlin`, `compileReleaseUnitTestKotlin`, etc).
+// Android Studio's "Make Project" / Gradle sync still tries to invoke
+// `:Scan:unitTestClasses` on some code paths and fails with
+//   "Cannot locate tasks that match ':Scan:unitTestClasses'".
+// Register a thin alias so the IDE is happy. Pure aggregator — no actions
+// of its own, just dependsOn the per-variant compile tasks.
+afterEvaluate {
+    if (tasks.findByName("unitTestClasses") == null) {
+        tasks.register("unitTestClasses") {
+            group = "verification"
+            description =
+                "Compatibility alias — depends on all variant-specific unit-test compile tasks."
+            dependsOn(tasks.matching {
+                val n = it.name
+                n.startsWith("compile") &&
+                    (n.endsWith("UnitTestKotlin") || n.endsWith("UnitTestJavaWithJavac"))
+            })
+        }
+    }
+}
+
 // ---- versionCode auto-bump ----------------------------------------------
 //
 // Mirrors the iOS app's `agvtool bump` post-build action: every successful

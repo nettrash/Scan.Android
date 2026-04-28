@@ -1,6 +1,6 @@
 package me.nettrash.scan.data.payload
 
-import android.net.Uri
+import java.net.URLDecoder
 import java.util.Locale
 
 /**
@@ -52,31 +52,52 @@ object MagnetURIParser {
 
     fun parse(raw: String): MagnetPayload? {
         if (!looksLikeMagnet(raw)) return null
-        // Drop the `magnet:` prefix so Uri can parse the query.
-        val body = raw.substring("magnet:".length)
-        val uri = runCatching { Uri.parse("scheme:$body") }.getOrNull() ?: return null
+        // Magnet URIs are *opaque* (no `//` after scheme), so Android's
+        // `Uri.parse(...)` returns an opaque Uri whose `queryParameterNames`
+        // / `getQueryParameters` throw UnsupportedOperationException at
+        // runtime. Robolectric is more permissive so unit tests pass — but
+        // the real device crashes. Parse the query string ourselves.
+        val q = raw.substringAfter("magnet:?", missingDelimiterValue = "")
+        if (q.isEmpty()) return null
 
         var infoHash: String? = null
         var name: String? = null
         val trackers = mutableListOf<String>()
         var exactLength: Long? = null
 
-        for (key in uri.queryParameterNames) {
-            val values = uri.getQueryParameters(key)
-            for (value in values) {
-                when (key.lowercase(Locale.ROOT)) {
-                    "xt" -> {
-                        val idx = value.indexOf("btih:")
-                        if (idx >= 0) infoHash = value.substring(idx + "btih:".length)
-                    }
-                    "dn" -> name = value
-                    "tr" -> trackers += value
-                    "xl" -> exactLength = value.toLongOrNull()
+        for (pair in q.split('&')) {
+            if (pair.isEmpty()) continue
+            val eq = pair.indexOf('=')
+            val rawKey: String
+            val rawValue: String
+            if (eq < 0) {
+                rawKey = pair
+                rawValue = ""
+            } else {
+                rawKey = pair.substring(0, eq)
+                rawValue = pair.substring(eq + 1)
+            }
+            val key = decode(rawKey).lowercase(Locale.ROOT)
+            val value = decode(rawValue)
+            when (key) {
+                "xt" -> {
+                    val idx = value.indexOf("btih:")
+                    if (idx >= 0) infoHash = value.substring(idx + "btih:".length)
                 }
+                "dn" -> name = value
+                "tr" -> trackers += value
+                "xl" -> exactLength = value.toLongOrNull()
             }
         }
 
         if (infoHash.isNullOrEmpty() && name.isNullOrEmpty()) return null
         return MagnetPayload(infoHash, name, trackers, exactLength, raw)
     }
+
+    /**
+     * Tolerant URL-decode. Magnet `tr=` values are typically already
+     * URL-encoded; bad encoding shouldn't take down the parser.
+     */
+    private fun decode(s: String): String =
+        runCatching { URLDecoder.decode(s, "UTF-8") }.getOrElse { s }
 }

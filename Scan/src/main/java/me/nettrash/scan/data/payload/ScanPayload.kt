@@ -332,10 +332,36 @@ object ScanPayloadParser {
     // ---- mailto -------------------------------------------------------
 
     private fun parseMailto(raw: String): ScanPayload.Email? {
-        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
-        val address = uri.schemeSpecificPart?.substringBefore('?') ?: return null
-        val subject = uri.getQueryParameter("subject")
-        val body = uri.getQueryParameter("body")
+        // `mailto:…?subject=…&body=…` is an *opaque* URI (no `//` after
+        // the scheme), so `Uri.parse(raw).getQueryParameter(...)` throws
+        // UnsupportedOperationException on real Android even though
+        // Robolectric tolerates it. Parse by hand instead so the same
+        // code paths run in unit tests and on-device.
+        if (!raw.regionMatches(0, "mailto:", 0, 7, ignoreCase = true)) return null
+        val ssp = raw.substring(7)
+        val qIdx = ssp.indexOf('?')
+        val rawAddress = if (qIdx < 0) ssp else ssp.substring(0, qIdx)
+        val address = runCatching { java.net.URLDecoder.decode(rawAddress, "UTF-8") }
+            .getOrElse { rawAddress }
+        if (address.isBlank()) return null
+
+        var subject: String? = null
+        var body: String? = null
+        if (qIdx >= 0 && qIdx + 1 < ssp.length) {
+            for (pair in ssp.substring(qIdx + 1).split('&')) {
+                if (pair.isEmpty()) continue
+                val eq = pair.indexOf('=')
+                val key = if (eq < 0) pair else pair.substring(0, eq)
+                val rawValue = if (eq < 0) "" else pair.substring(eq + 1)
+                val value = runCatching {
+                    java.net.URLDecoder.decode(rawValue, "UTF-8")
+                }.getOrElse { rawValue }
+                when (key.lowercase(Locale.ROOT)) {
+                    "subject" -> subject = value
+                    "body"    -> body    = value
+                }
+            }
+        }
         return ScanPayload.Email(address, subject, body)
     }
 
@@ -350,9 +376,27 @@ object ScanPayloadParser {
             val body = parts.getOrNull(1)
             return ScanPayload.Sms(num, body)
         }
-        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
-        val num = uri.schemeSpecificPart?.substringBefore('?') ?: return null
-        val body = uri.getQueryParameter("body")
+        // Same opaque-URI trap as mailto: `sms:` has no `//` so
+        // `getQueryParameter` throws on real Android. Parse by hand.
+        if (!lower.startsWith("sms:")) return null
+        val ssp = raw.substring(4)
+        val qIdx = ssp.indexOf('?')
+        val num = if (qIdx < 0) ssp else ssp.substring(0, qIdx)
+        if (num.isBlank()) return null
+        var body: String? = null
+        if (qIdx >= 0 && qIdx + 1 < ssp.length) {
+            for (pair in ssp.substring(qIdx + 1).split('&')) {
+                if (pair.isEmpty()) continue
+                val eq = pair.indexOf('=')
+                val key = if (eq < 0) pair else pair.substring(0, eq)
+                val rawValue = if (eq < 0) "" else pair.substring(eq + 1)
+                if (key.equals("body", ignoreCase = true)) {
+                    body = runCatching {
+                        java.net.URLDecoder.decode(rawValue, "UTF-8")
+                    }.getOrElse { rawValue }
+                }
+            }
+        }
         return ScanPayload.Sms(num, body)
     }
 

@@ -1,0 +1,16 @@
+{
+    // Use the Homebrew openjdk@21 (a full JDK with jlink) instead of the
+    // JRE bundled with the Red Hat Java extension, which lacks jlink and
+    // causes Gradle's Daemon JVM toolchain (toolchainVersion=21 in
+    // gradle/gradle-daemon-jvm.properties) to fail with:
+    //   "jlink executable .../redhat.java-*/jre/21.*/bin/jlink does not exist"
+    "java.jdt.ls.java.home": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+    "java.import.gradle.java.home": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-21",
+            "path": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+            "default": true
+        }
+    ]
+}
