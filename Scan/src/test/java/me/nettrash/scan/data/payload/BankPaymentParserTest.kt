@@ -123,7 +123,6 @@ class BankPaymentParserTest {
 
 
 
-
             199.95
             CHF
             S

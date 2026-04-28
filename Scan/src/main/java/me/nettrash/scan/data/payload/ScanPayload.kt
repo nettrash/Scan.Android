@@ -40,6 +40,11 @@ sealed class ScanPayload {
     data class CzechSPD(val payload: CzechSPDPayload) : ScanPayload()
     data class PaBySquare(val payload: PayBySquarePayload) : ScanPayload()
     data class Regional(val payload: RegionalPaymentPayload) : ScanPayload()
+    data class Magnet(val payload: MagnetPayload) : ScanPayload()
+    data class RichUrl(val payload: RichURLPayload) : ScanPayload()
+    data class GS1(val payload: GS1Payload) : ScanPayload()
+    data class BoardingPass(val payload: BoardingPassPayload) : ScanPayload()
+    data class DrivingLicense(val payload: DrivingLicensePayload) : ScanPayload()
     data class Text(val text: String) : ScanPayload()
 
     /** Short label describing the payload kind, for UI badges. */
@@ -67,6 +72,11 @@ sealed class ScanPayload {
             is CzechSPD -> "SPD (CZ)"
             is PaBySquare -> "Pay by Square (SK)"
             is Regional -> payload.scheme.displayName
+            is Magnet -> "Magnet"
+            is RichUrl -> payload.kind.displayName
+            is GS1 -> "GS1"
+            is BoardingPass -> "Boarding Pass"
+            is DrivingLicense -> "Driver's Licence"
             is Text -> "Text"
         }
 }
@@ -97,6 +107,18 @@ object ScanPayloadParser {
         }
 
         val lower = trimmed.lowercase(Locale.ROOT)
+
+        // Identity & travel — high-confidence prefixes, must run before any
+        // URL classification.
+
+        // IATA Bar Coded Boarding Pass.
+        if (BoardingPassParser.looksLikeBoardingPass(trimmed)) {
+            BoardingPassParser.parse(trimmed)?.let { return ScanPayload.BoardingPass(it) }
+        }
+        // AAMVA driver's licence.
+        if (DrivingLicenseParser.looksLikeAAMVA(trimmed)) {
+            DrivingLicenseParser.parse(trimmed)?.let { return ScanPayload.DrivingLicense(it) }
+        }
 
         // EPC SEPA Payment QR — line 1 is "BCD".
         if (trimmed.startsWith("BCD\n") || trimmed.startsWith("BCD\r\n")) {
@@ -212,12 +234,49 @@ object ScanPayloadParser {
             CalendarPayloadParser.parse(trimmed)?.let { return ScanPayload.Calendar(it) }
         }
 
+        // magnet:?xt=urn:btih:…
+        if (MagnetURIParser.looksLikeMagnet(trimmed)) {
+            MagnetURIParser.parse(trimmed)?.let { return ScanPayload.Magnet(it) }
+        }
+
+        // GS1 — parens / FNC1 forms (Digital Link is a URL, handled below).
+        if (trimmed.startsWith("(") && GS1Parser.looksLikeGS1(trimmed)) {
+            GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+        }
+        if (trimmed.firstOrNull()?.code == 0x1D) {
+            GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+        }
+
         // URL-ish
         val uri = runCatching { Uri.parse(trimmed) }.getOrNull()
         val sch = uri?.scheme?.lowercase(Locale.ROOT)
         if (sch == "http" || sch == "https") {
+            // GS1 Digital Link first (host-agnostic).
+            if (GS1Parser.looksLikeGS1(trimmed)) {
+                GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+            }
+            // Rich-URL flavour next — Maps URLs are re-classified to .Geo
+            // when we can pull coordinates out, so the user gets the same
+            // "Open in Maps" smart action they would for a `geo:` payload.
+            RichURLParser.parse(trimmed)?.let { rich ->
+                if (rich.kind == RichURLPayload.Kind.GOOGLE_MAPS ||
+                    rich.kind == RichURLPayload.Kind.APPLE_MAPS) {
+                    val lat = rich.fields.firstOrNull { it.label == "Latitude" }?.value?.toDoubleOrNull()
+                    val lon = rich.fields.firstOrNull { it.label == "Longitude" }?.value?.toDoubleOrNull()
+                    val q = rich.fields.firstOrNull { it.label == "Query" }?.value
+                    if (lat != null && lon != null) {
+                        return ScanPayload.Geo(lat, lon, q)
+                    }
+                }
+                return ScanPayload.RichUrl(rich)
+            }
             return ScanPayload.Url(trimmed)
         }
+
+        // Bare cryptocurrency address / Lightning token — last-ditch before
+        // text fallback because these are otherwise indistinguishable from
+        // arbitrary alphanumeric strings.
+        CryptoURIParser.parseBare(trimmed)?.let { return ScanPayload.Crypto(it) }
 
         return ScanPayload.Text(trimmed)
     }

@@ -17,7 +17,7 @@ plugins {
 // The file IS tracked in git so the bump propagates between machines
 // (commit it after a release, just like you'd commit the iOS pbxproj diff).
 //
-// versionName is human (semver). Defaults to "1.0" but can be overridden
+// versionName is human (semver). Defaults to "1.1" but can be overridden
 // at the command line — the release workflow passes `-PversionName=1.2.3`
 // derived from the v1.2.3 git tag, so a tag = a published version name.
 val versionPropsFile = rootProject.file("version.properties")
@@ -45,7 +45,7 @@ val storedVersionCode: Int = run {
 }
 
 val resolvedVersionName: String =
-    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.0"
+    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.1"
 
 // Allow opting out of the bump for a single build, e.g. when running a
 // throwaway test or when CI does not want the local file mutated:

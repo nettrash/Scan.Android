@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.nettrash.scan.data.payload.LabelledField
+import me.nettrash.scan.data.payload.RichURLPayload
 import me.nettrash.scan.data.payload.ScanPayload
 
 /**
@@ -219,8 +220,48 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
             }
         }
 
+        is ScanPayload.Magnet -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            ActionButton(Icons.Filled.OpenInBrowser, "Open in torrent client") {
+                openUri(context, payload.payload.raw)
+            }
+        }
+
+        is ScanPayload.RichUrl -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            val (label, _) = richUrlAction(payload.payload.kind)
+            ActionButton(Icons.Filled.OpenInBrowser, label) {
+                openUri(context, payload.payload.url)
+            }
+        }
+
+        is ScanPayload.GS1 -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            payload.payload.gtin?.let { gtin ->
+                ActionButton(Icons.Filled.Search, "Look up GTIN $gtin") {
+                    openUri(context, "https://www.google.com/search?q=GTIN+${Uri.encode(gtin)}")
+                }
+            }
+        }
+
+        is ScanPayload.BoardingPass -> LabelledFieldsList(payload.payload.labelledFields())
+        is ScanPayload.DrivingLicense -> LabelledFieldsList(payload.payload.labelledFields())
+
         is ScanPayload.Text -> Unit
     }
+}
+
+private fun richUrlAction(kind: RichURLPayload.Kind): Pair<String, String> = when (kind) {
+    RichURLPayload.Kind.WHATS_APP    -> "Open in WhatsApp" to "WhatsApp"
+    RichURLPayload.Kind.TELEGRAM     -> "Open in Telegram" to "Telegram"
+    RichURLPayload.Kind.APPLE_WALLET -> "Add to Wallet" to "Wallet"
+    RichURLPayload.Kind.APP_STORE    -> "Open in App Store" to "App Store"
+    RichURLPayload.Kind.PLAY_STORE   -> "Open Play Store listing" to "Play Store"
+    RichURLPayload.Kind.YOUTUBE      -> "Watch on YouTube" to "YouTube"
+    RichURLPayload.Kind.SPOTIFY      -> "Open in Spotify" to "Spotify"
+    RichURLPayload.Kind.APPLE_MUSIC  -> "Open in Apple Music" to "Apple Music"
+    RichURLPayload.Kind.GOOGLE_MAPS,
+    RichURLPayload.Kind.APPLE_MAPS   -> "Open in Maps" to "Maps"
 }
 
 @Composable

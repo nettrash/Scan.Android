@@ -8,6 +8,56 @@ The short, user-facing version of these notes ships to Google Play under `Scan/s
 
 _(nothing yet)_
 
+## [1.1] — 2026-04-28
+
+Parity release with iOS Scan 1.1 — same payload-recognition surface on both platforms.
+
+### Marketing version
+
+- Default `versionName` in `Scan/build.gradle.kts` bumped from `1.0` to `1.1`. Local builds without `-PversionName=…` now produce `1.1`; tag-driven CI builds continue to override (e.g. `git tag v1.1.0` → `versionName = "1.1.0"`). `versionCode` continues to auto-increment from `version.properties` per build.
+
+### New payload types — Pass 1
+
+Line-for-line Kotlin port of the iOS additions:
+
+- **Magnet URIs** — new `MagnetPayload.kt` + `MagnetURIParser`. Surfaces info-hash, display name, exact length, tracker list. "Open in torrent client" smart action.
+- **Rich URLs** — new `RichURLPayload.kt` + `RichURLParser`. Recognises:
+  - WhatsApp click-to-chat (`wa.me/…`, `api.whatsapp.com/send?…`)
+  - Telegram (`t.me/…`)
+  - Apple Wallet `.pkpass`
+  - App Store / Google Play store URLs (extract App ID / package name)
+  - YouTube watch / `youtu.be` / Shorts (extract video ID)
+  - Spotify, Apple Music
+  Each kind gets its own per-action label in `PayloadActions.kt`.
+- **Maps URLs (Google + Apple) re-classify to `.Geo`** when coordinates can be pulled out, so the user gets the same "Open in Maps" smart action as a `geo:` payload.
+- **vCard 4.0** transparently supported — the existing parser doesn't gate on `VERSION:`.
+- **More crypto chains.** `CryptoPayload.Chain` gained `RIPPLE`, `STELLAR`, `COSMOS`, `LNURL`, `LIGHTNING_ADDRESS`. Schemes recognised: `xrp` / `xrpl` / `ripple` / `stellar` / `web+stellar` / `cosmos`.
+- **Bare crypto address detection** in `CryptoURIParser.parseBare()`. Strings without a scheme but matching well-known address formats classify as `.Crypto`: legacy + bech32 Bitcoin, Ethereum `0x…`, XRP `r…`, Stellar `G…`, Cosmos `cosmos1…`, bare bolt11 invoices (`lnbc…` / `lntb…`), LNURL bech32 (`LNURL1…`).
+
+### New payload types — Pass 2
+
+- **GS1 Application Identifier** — new `GS1Payload.kt` + `GS1Parser`. Three forms: parens (`(01)…(17)…`), Digital Link (`https://…/01/<gtin>/10/<batch>`), and FNC1-separated. Registry of ~40 common AIs with friendly names; date AIs render as `YYYY-MM-DD`. Smart action: GTIN web lookup.
+- **IATA Bar Coded Boarding Pass** — new `BoardingPassPayload.kt` + `BoardingPassParser`. Mandatory 60-char leg layout per RP 1740c.
+- **AAMVA driver's licence (PDF417)** — new `DrivingLicensePayload.kt` + `DrivingLicenseParser`. Header IIN extraction + jurisdiction-name lookup (every US state + Canadian province), element-ID walker for the standard identity / dates / address fields. Auto-detects MM/DD/YYYY vs YYYY/MM/DD by checking whether the expiry's first four chars look like a year.
+
+### Sealed-class hierarchy
+
+`ScanPayload` gained five new cases — `Magnet`, `RichUrl`, `GS1`, `BoardingPass`, `DrivingLicense` — with exhaustive `kindLabel` and dispatch ordering tuned so BCBP + AAMVA run before the bank-payment chain (their prefixes are very specific and would otherwise be at risk of being mis-classified by later stages).
+
+### UI
+
+- Per-payload smart actions in `PayloadActions.kt` for all five new cases.
+- History-row icons in `HistoryScreen.kt` for the new cases.
+
+### Tests
+
+- New `Pass1Pass2PortTest.kt` with **27 tests** mirroring the iOS Pass-1 + Pass-2 additions one-for-one. Run under Robolectric so the `android.net.Uri` / `android.util.Base64` paths exercised by the Maps / Spotify / GS1 Digital Link / Magnet parsers actually use real Android implementations rather than stub-returns.
+- Total Android test count: 49 → **76**.
+
+### Behavioural divergence from iOS (deliberate)
+
+- Apple Maps URL test asserts `query == "Apple Park"` (with a space) where iOS asserts `"Apple+Park"` (literal `+`). Java's `URLDecoder` follows `application/x-www-form-urlencoded` semantics; iOS `URLComponents` doesn't. Same divergence already in place for the original `geo:` parser.
+
 ## [1.0] — 2026-04-27
 
 First public release.

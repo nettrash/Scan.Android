@@ -180,5 +180,10 @@ internal fun iconForPayload(payload: ScanPayload): ImageVector = when (payload) 
     is ScanPayload.CzechSPD -> Icons.Filled.Receipt
     is ScanPayload.PaBySquare -> Icons.Filled.GridView
     is ScanPayload.Regional -> Icons.Filled.OpenInBrowser
+    is ScanPayload.Magnet -> Icons.Filled.OpenInBrowser
+    is ScanPayload.RichUrl -> Icons.Filled.OpenInBrowser
+    is ScanPayload.GS1 -> Icons.Filled.Numbers
+    is ScanPayload.BoardingPass -> Icons.Filled.CalendarToday
+    is ScanPayload.DrivingLicense -> Icons.Filled.Person
     is ScanPayload.Text -> Icons.Filled.QrCode
 }
