@@ -210,16 +210,16 @@ dependencies {
     testImplementation(libs.truth)
 }
 
-// ---- IDE compatibility: `unitTestClasses` alias ------------------------
+// ---- IDE compatibility: legacy aggregate test-class tasks --------------
 //
-// AGP 9 stopped creating the legacy aggregate `unitTestClasses` task and
-// only registers the variant-specific compile tasks
-// (`compileDebugUnitTestKotlin`, `compileReleaseUnitTestKotlin`, etc).
-// Android Studio's "Make Project" / Gradle sync still tries to invoke
-// `:Scan:unitTestClasses` on some code paths and fails with
-//   "Cannot locate tasks that match ':Scan:unitTestClasses'".
-// Register a thin alias so the IDE is happy. Pure aggregator — no actions
-// of its own, just dependsOn the per-variant compile tasks.
+// AGP 9 stopped creating the legacy aggregate `unitTestClasses` /
+// `androidTestClasses` tasks and only registers the variant-specific
+// compile tasks (e.g. `compileDebugUnitTestKotlin`,
+// `compileDebugAndroidTestKotlin`). Android Studio's "Make Project" /
+// Gradle sync still invokes the aggregate names on some code paths and
+// fails with "Cannot locate tasks that match ':Scan:<name>'".
+// Register thin aliases so the IDE is happy. Pure aggregators — no actions
+// of their own, just dependsOn the per-variant compile tasks.
 afterEvaluate {
     if (tasks.findByName("unitTestClasses") == null) {
         tasks.register("unitTestClasses") {
@@ -230,6 +230,18 @@ afterEvaluate {
                 val n = it.name
                 n.startsWith("compile") &&
                     (n.endsWith("UnitTestKotlin") || n.endsWith("UnitTestJavaWithJavac"))
+            })
+        }
+    }
+    if (tasks.findByName("androidTestClasses") == null) {
+        tasks.register("androidTestClasses") {
+            group = "verification"
+            description =
+                "Compatibility alias — depends on all variant-specific instrumentation-test compile tasks."
+            dependsOn(tasks.matching {
+                val n = it.name
+                n.startsWith("compile") &&
+                    (n.endsWith("AndroidTestKotlin") || n.endsWith("AndroidTestJavaWithJavac"))
             })
         }
     }
