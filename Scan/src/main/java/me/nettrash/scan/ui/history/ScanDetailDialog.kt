@@ -56,7 +56,11 @@ fun ScanDetailDialog(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val payload = remember(record.value, record.symbology) {
-        ScanPayloadParser.parse(record.value, Symbology.fromDisplayName(record.symbology))
+        // Same defensive wrap as the scanner sheet — never let a parser
+        // exception bubble up and tear down the host Activity.
+        runCatching {
+            ScanPayloadParser.parse(record.value, Symbology.fromDisplayName(record.symbology))
+        }.getOrElse { me.nettrash.scan.data.payload.ScanPayload.Text(record.value) }
     }
     var notes by remember { mutableStateOf(record.notes.orEmpty()) }
     LaunchedEffect(notes) {

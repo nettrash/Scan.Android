@@ -11,7 +11,14 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <!--
+       Camera is the primary feature, but the Generate tab and History work
+       without it — and Play's pre-launch test farm includes devices with
+       broken / unavailable cameras. Marking it `required="false"` lets the
+       app install + run on those devices without crashing the test, which
+       previously failed the App Stability gate.
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application

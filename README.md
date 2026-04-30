@@ -1,6 +1,6 @@
 # Scan.Android
 
-Android port of [Scan](https://github.com/nettrash/Scan), an app for reading and generating 1D and 2D barcodes. Built in Jetpack Compose on top of CameraX + ML Kit (live scanning), ZXing (generation), Room (history), and Hilt (DI). The point of the app is not just to *decode* a code, but to *understand* what's in it: scan a Wi-Fi QR and it shows the SSID and offers to open Wi-Fi Settings; scan a SEPA invoice and it surfaces the IBAN, beneficiary, and amount as separate copyable rows; scan a Russian receipt and it shows the fiscal markers; and so on.
+Android port of [Scan](https://github.com/nettrash/Scan), an app for reading and generating 1D and 2D barcodes. Built in Jetpack Compose on top of CameraX + ML Kit (live scanning), ZXing (generation), Room (history), and Hilt (DI). The point of the app is not just to *decode* a code, but to *understand* what's in it: scan a Wi-Fi QR and it shows the SSID and offers to open Wi-Fi Settings; scan a SEPA invoice and it surfaces the IBAN, beneficiary, and amount as separate copyable rows; scan a fiscal receipt and it shows the fiscal markers; and so on.
 
 The payload-decomposition layer is a line-for-line Kotlin port of the iOS app's parsers — same recognised formats, same field labelling, same smart actions where the platform offers an equivalent intent.
 
@@ -24,9 +24,9 @@ The decoded string is parsed and rendered as structured fields with per-row tap-
 | Authentication | `otpauth://` |
 | Retail | EAN-8 / EAN-13 / UPC-A / UPC-E / ITF-14 product codes |
 | Cryptocurrency | Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11) |
-| Bank payments | EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only — decoding needs LZMA), Russian unified payment (ST00012 / ST00011), EMVCo Merchant QR with nested-template drilling for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS and friends, Indian UPI (`upi://pay`), Bezahlcode (German legacy `bank://` / `bezahlcode://`), Serbian NBS IPS QR (Prenesi — PR / PT / PK) |
+| Bank payments | EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only — decoding needs LZMA), EMVCo Merchant QR with nested-template drilling for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS and friends, Indian UPI (`upi://pay`), Bezahlcode (German legacy `bank://` / `bezahlcode://`), Serbian NBS IPS QR (Prenesi — PR / PT / PK) |
 | Mobile-payment apps | Swish (Sweden, base64-JSON-encoded `swish://`), Vipps (Norway), MobilePay (Denmark / Finland), Bizum (Spain), iDEAL (Netherlands) |
-| Receipts | Russian FNS retail receipt, Serbian SUF fiscal receipt |
+| Receipts | Serbian SUF fiscal receipt |
 
 ### Smart actions
 
@@ -43,7 +43,6 @@ Per payload type, dispatched via standard Android Intents so any installed handl
 - **UPI** — `ACTION_VIEW` with the `upi://` URI; the OS picks an installed UPI app — PhonePe, GPay, Paytm, BHIM…
 - **Mobile-payment apps** — `ACTION_VIEW` with the registered URI scheme.
 - **Serbian SUF receipt** — Open the official PURS verification page.
-- **Russian FNS receipt** — Date in the user's timezone, amount, fiscal markers (FN / FD / FPD), receipt type (Sale / Refund / Expense / Expense refund).
 - All payloads — Copy raw to the system clipboard, Share via `ACTION_SEND`.
 
 ### Generation
@@ -116,7 +115,7 @@ Unit tests live under `Scan/src/test/java/me/nettrash/scan/` and mirror the iOS 
 Coverage:
 
 - `data/payload/ScanPayloadParserTest` — URL, Wi-Fi (with escaped semicolon), `mailto:` / `tel:` / `sms:` / `geo:`, vCard 3.0, MECARD, EAN-13 product code, kind labels, EPC-priority-over-text.
-- `data/payload/BankPaymentParserTest` — EPC SEPA Payment, Russian unified payment (ST00012, kopecks → rubles), FNS retail receipt, EMVCo Merchant QR (top-level + nested-template drilling for Pix), Swiss QR-bill (31-line minimum), Serbian SUF receipt URL, Serbian NBS IPS QR.
+- `data/payload/BankPaymentParserTest` — EPC SEPA Payment, EMVCo Merchant QR (top-level + nested-template drilling for Pix), Swiss QR-bill (31-line minimum), Serbian SUF receipt URL, Serbian NBS IPS QR.
 - `data/payload/CryptoUriParserTest` — Bitcoin (BIP-21), Ethereum with `@chainId` (EIP-681), Lightning (BOLT-11).
 - `data/payload/CalendarParserTest` — VEVENT (UTC `Z` suffix), all-day event (`VALUE=DATE`).
 - `data/payload/RegionalPaymentParserTest` — UPI (`upi://pay`), Czech SPD (with `+`-as-space), Slovak Pay by Square recognition + lookalike rejection, Bezahlcode (`bank://`), Swish (base64-JSON `data=` blob), Vipps.
@@ -156,7 +155,7 @@ Scan.Android/
          │  ├─ db/                     Room: ScanRecord entity, DAO, database
          │  └─ payload/                payload models + parsers (port of iOS)
          │     ├─ ScanPayload.kt       sealed class + master parser
-         │     ├─ BankPaymentPayloads.kt  EPC, Swiss, Russian, FNS, EMVCo, Serbian
+         │     ├─ BankPaymentPayloads.kt  EPC, Swiss, EMVCo, Serbian
          │     ├─ RegionalPaymentPayloads.kt  UPI, Czech SPD, Pay by Square, Bezahlcode, Swish, Vipps, MobilePay, Bizum, iDEAL
          │     ├─ CryptoPayload.kt     BIP-21 / EIP-681 / BOLT-11
          │     ├─ CalendarPayload.kt   RFC 5545 VEVENT parser
@@ -194,7 +193,7 @@ Scan.Android/
 
 - ML Kit barcode scanner module download via Play Services for smaller APKs (currently using the bundled model for offline-first behaviour).
 - Real decoding of Slovak Pay by Square — would need an LZMA Kotlin/Java port (e.g. XZ for Java); today the format is recognised and the user can route the raw token to a banking app via Share / Copy.
-- Localised field labels for the Russian, Serbian, Czech, and Indian formats (currently English).
+- Localised field labels for the Serbian, Czech, and Indian formats (currently English).
 - Boarding-pass (BCBP), AAMVA driver's-licence, GS1 Application Identifier decoders.
 - Home-screen widget showing recent scans, mirroring the Geo.Android Glance widget pattern.
 

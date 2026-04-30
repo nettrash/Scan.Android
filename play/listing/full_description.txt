@@ -26,9 +26,9 @@ Scan understands these payload formats and surfaces each field as a tap-to-copy 
 • Authentication — otpauth:// for authenticator apps
 • Retail — EAN / UPC / ITF product codes
 • Cryptocurrency — Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11)
-• Bank payments — EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill, Czech SPD, Slovak Pay by Square, Russian unified payment (ST00012 / ST00011), EMVCo Merchant QR with drill-down for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS, Indian UPI, Bezahlcode, Serbian NBS IPS QR (Prenesi)
+• Bank payments — EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill, Czech SPD, Slovak Pay by Square, EMVCo Merchant QR with drill-down for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS, Indian UPI, Bezahlcode, Serbian NBS IPS QR (Prenesi)
 • Mobile-payment apps — Swish, Vipps, MobilePay, Bizum, iDEAL
-• Receipts — Russian FNS retail receipt, Serbian SUF fiscal receipt
+• Receipts — Serbian SUF fiscal receipt
 
 SMART ACTIONS
 

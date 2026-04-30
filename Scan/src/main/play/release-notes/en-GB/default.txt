@@ -1,7 +1,6 @@
-Read & generate barcodes — and understand what's inside.
+Version 1.1
 
-• Live scan: QR, Aztec, PDF417, Data Matrix, EAN/UPC, Code 128, ITF, Codabar.
-• Smart result sheet decodes Wi-Fi, contacts, calendar events, SEPA / Swiss / Russian / Indian / Serbian payments, crypto wallets — each field tap-to-copy.
-• Generate your own QR, Aztec, PDF417 or Code 128 codes from text, URL, contact, or Wi-Fi credentials.
-• Searchable local history.
-• On-device. No network. No ads.
+• Recognises more barcode payloads: GS1 product codes (parens, FNC1 and Digital Link forms), IATA boarding passes (PDF417), and AAMVA identity-document barcodes.
+• Magnet links, vCard 4.0 and rich URLs (WhatsApp, Telegram, YouTube, Spotify, Apple Music, App Store, Google Play) now get tailored smart actions.
+• Extra cryptocurrency chains — XRP, Stellar, Cosmos and Lightning addresses.
+• Stability fixes and parser improvements.

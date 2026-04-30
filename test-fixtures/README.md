@@ -64,7 +64,7 @@ Either path ends up exercising the parser — the live camera and the still-imag
 | `39-epc-sepa.png` | EPC GiroCode (line 1 = `BCD`) | SEPA Payment |
 | `40-swiss-qrbill.png` | Swiss QR-bill (line 1 = `SPC`) | QR-bill (Swiss) |
 | `41-russian-st00012.png` | ST00012 unified payment | Payment |
-| `42-fns-receipt.png` | Russian FNS retail receipt | Receipt |
+| `42-fns-receipt.png` | FNS retail receipt | Receipt |
 | `43-emvco-pix.png` | EMVCo merchant QR with embedded Pix template | Merchant QR (sub-row labelled "Pix account (26)") |
 | `44-suf-receipt.png` | suf.purs.gov.rs URL | Receipt (RS) |
 | `45-nbs-ips-pr.png` | NBS IPS QR — printed bill (PR) | IPS Payment (RS) |

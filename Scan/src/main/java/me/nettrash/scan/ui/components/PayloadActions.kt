@@ -132,7 +132,10 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
                 }
             }
             ActionButton(Icons.Filled.Settings, "Open Wi-Fi Settings") {
-                context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+                runCatching { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+                    .onFailure {
+                        Toast.makeText(context, "Wi-Fi settings unavailable.", Toast.LENGTH_SHORT).show()
+                    }
             }
         }
 

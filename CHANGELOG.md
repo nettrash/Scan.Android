@@ -80,9 +80,9 @@ First public release.
 - Authentication: `otpauth://`.
 - Retail: EAN-8 / EAN-13 / UPC-A / UPC-E / ITF-14 product codes.
 - Cryptocurrency: Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11).
-- Bank payments: EPC SEPA / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only), Russian unified payment (ST00012 / ST00011), EMVCo Merchant QR with nested-template drilling for Pix / PayNow / PromptPay / CoDi / UPI-via-EMVCo / DuitNow / QRIS / FPS / NAPAS / NETS, Indian UPI (`upi://pay`), Bezahlcode (`bank://` / `bezahlcode://`), Serbian NBS IPS QR (PR / PT / PK).
+- Bank payments: EPC SEPA / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only), EMVCo Merchant QR with nested-template drilling for Pix / PayNow / PromptPay / CoDi / UPI-via-EMVCo / DuitNow / QRIS / FPS / NAPAS / NETS, Indian UPI (`upi://pay`), Bezahlcode (`bank://` / `bezahlcode://`), Serbian NBS IPS QR (PR / PT / PK).
 - Mobile-payment apps: Swish (Sweden), Vipps (Norway), MobilePay (Denmark / Finland), Bizum (Spain), iDEAL (Netherlands).
-- Receipts: Russian FNS retail receipt, Serbian SUF fiscal receipt.
+- Receipts: Serbian SUF fiscal receipt.
 
 ### Smart actions
 

@@ -1,7 +1,7 @@
 Read & generate barcodes — and understand what's inside.
 
 • Live scan: QR, Aztec, PDF417, Data Matrix, EAN/UPC, Code 128, ITF, Codabar.
-• Smart result sheet decodes Wi-Fi, contacts, calendar events, SEPA / Swiss / Russian / Indian / Serbian payments, crypto wallets — each field tap-to-copy.
+• Smart result sheet decodes Wi-Fi, contacts, calendar events, SEPA / Swiss / Indian / Serbian payments, crypto wallets — each field tap-to-copy.
 • Generate your own QR, Aztec, PDF417 or Code 128 codes from text, URL, contact, or Wi-Fi credentials.
 • Searchable local history.
 • On-device. No network. No ads.

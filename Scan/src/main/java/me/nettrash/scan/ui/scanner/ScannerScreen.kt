@@ -311,7 +311,14 @@ private fun ScanResultSheet(
     onSave: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val payload = remember(code) { ScanPayloadParser.parse(code.value, code.symbology) }
+    // Belt-and-braces: any uncaught exception inside the parser would
+    // otherwise propagate up through the bottom-sheet Composable and crash
+    // the Activity — and Play's pre-launch test sweeps a lot of malformed
+    // payloads at us. Fall back to plain Text so the sheet always renders.
+    val payload = remember(code) {
+        runCatching { ScanPayloadParser.parse(code.value, code.symbology) }
+            .getOrElse { me.nettrash.scan.data.payload.ScanPayload.Text(code.value) }
+    }
     var notes by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
 
