@@ -1,0 +1,5 @@
+Scan 1.5 — Universal Links + sync surface.
+
+• Open https://nettrash.me/scan/<base64url-payload> from anywhere on Android and Scan handles the result directly.
+• Settings now shows Auto Backup status so you know whether your History is backed up to Google.
+• WPA3 / Passpoint Wi-Fi (1.4), USDC / USDT / DAI tokens (1.4), DigiD / EUDI / OpenID4VC identity flows (1.4), loyalty-card tagging (1.4) — all here.

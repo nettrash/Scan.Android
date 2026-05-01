@@ -23,7 +23,13 @@ data class RichURLPayload(
         SPOTIFY("Spotify"),
         APPLE_MUSIC("Apple Music"),
         GOOGLE_MAPS("Google Maps"),
-        APPLE_MAPS("Apple Maps")
+        APPLE_MAPS("Apple Maps"),
+        /** New in 1.4. Identity-flow URLs — DigiD (NL government
+         *  SSO), EUDI Wallet (EU Digital Identity), and the generic
+         *  OpenID4VC verifier / issuer endpoints they're built on.
+         *  Special-cased so the result sheet can show a security
+         *  warning before the user taps "Continue in browser". */
+        DIGITAL_IDENTITY("Digital identity"),
     }
 
     fun labelledFields(): List<LabelledField> {
@@ -161,6 +167,9 @@ object RichURLParser {
             return RichURLPayload(RichURLPayload.Kind.GOOGLE_MAPS, rawUrl, emptyList())
         }
 
+        // ---- Digital identity flows (new in 1.4) ----
+        digitalIdentityPayload(rawUrl, uri, host, path)?.let { return it }
+
         // ---- Apple Maps share ----
         if (host == "maps.apple.com") {
             val ll = uri.getQueryParameterCi("ll")
@@ -181,6 +190,47 @@ object RichURLParser {
         }
 
         return null
+    }
+
+    /**
+     * Recognise URLs that look like DigiD / EUDI Wallet / generic
+     * OpenID4VC identity flows. Returns null if nothing matches —
+     * the caller falls back to plain `.url` in that case. Mirrors
+     * iOS's `digitalIdentityPayload`.
+     *
+     * Conservative on purpose: we only flag well-known brands plus a
+     * path-level signal (`openid-credential-offer`, `openid4vp`,
+     * `oidvp`) so a vanilla `https://example.com/login` doesn't get
+     * mis-classified and trigger the security warning.
+     */
+    private fun digitalIdentityPayload(
+        rawUrl: String, uri: Uri, host: String, path: String
+    ): RichURLPayload? {
+        val lowerPath = path.lowercase(Locale.ROOT)
+        val isDigiD = host.endsWith("digid.nl") || host == "mijn.digid.nl"
+        val isEUDI = host.endsWith("eudiw.dev")
+            || host.endsWith("eu-digital-identity-wallet.eu")
+            || (host.endsWith("ec.europa.eu") && lowerPath.contains("eudi"))
+        val isOpenID4VC = lowerPath.contains("openid-credential-offer")
+            || lowerPath.contains("openid4vp")
+            || lowerPath.contains("/oidvp/")
+            || (lowerPath.contains("authorize")
+                && (uri.getQueryParameterCi("response_type") == "vp_token"
+                    || uri.getQueryParameterCi("client_id_scheme") != null))
+        if (!isDigiD && !isEUDI && !isOpenID4VC) return null
+
+        val fields = mutableListOf<LabelledField>()
+        fields += when {
+            isDigiD -> LabelledField("Provider", "DigiD (Netherlands)")
+            isEUDI  -> LabelledField("Provider", "EU Digital Identity Wallet")
+            else    -> LabelledField("Protocol", "OpenID for Verifiable Credentials")
+        }
+        fields += LabelledField("Host", host)
+        for (key in listOf("client_id", "response_type", "scope",
+                           "request_uri", "presentation_definition_uri")) {
+            uri.getQueryParameterCi(key)?.let { fields += LabelledField(key, it) }
+        }
+        return RichURLPayload(RichURLPayload.Kind.DIGITAL_IDENTITY, rawUrl, fields)
     }
 
     private fun parseLatLon(s: String): Pair<Double, Double>? {

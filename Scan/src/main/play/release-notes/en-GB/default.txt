@@ -1,6 +1,5 @@
-Version 1.1
+Scan 1.6 — Share to Scan + PDF support.
 
-• Recognises more barcode payloads: GS1 product codes (parens, FNC1 and Digital Link forms), IATA boarding passes (PDF417), and AAMVA identity-document barcodes.
-• Magnet links, vCard 4.0 and rich URLs (WhatsApp, Telegram, YouTube, Spotify, Apple Music, App Store, Google Play) now get tailored smart actions.
-• Extra cryptocurrency chains — XRP, Stellar, Cosmos and Lightning addresses.
-• Stability fixes and parser improvements.
+• Scan now appears in the Android share sheet for images and PDFs — share a photo from any app and the result pops up directly.
+• Multi-page PDFs are walked page-by-page, both via the share sheet and the in-app Files importer.
+• Share up to 10 files at once; recognised codes are aggregated into a single list.

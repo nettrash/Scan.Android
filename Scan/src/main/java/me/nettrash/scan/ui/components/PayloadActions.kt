@@ -32,12 +32,20 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -56,11 +64,22 @@ import me.nettrash.scan.data.payload.ScanPayload
  * plus the common Copy / Share affordances.
  */
 @Composable
-fun PayloadActions(payload: ScanPayload, raw: String) {
+fun PayloadActions(
+    payload: ScanPayload,
+    raw: String,
+    /// New in 1.4. When non-null, surfaces a "Save as loyalty card"
+    /// affordance under product-code payloads; tapping it opens a
+    /// merchant-name prompt and then invokes the callback with the
+    /// trimmed merchant string. The callback is responsible for
+    /// persisting (typically by calling `ScannerViewModel.saveAsLoyaltyCard`).
+    /// Pass null when no save side-effect is appropriate (e.g. when
+    /// viewing an already-saved scan in the History detail dialog).
+    onSaveAsLoyaltyCard: ((String) -> Unit)? = null,
+) {
     val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SmartActions(payload, context)
+        SmartActions(payload, context, onSaveAsLoyaltyCard)
 
         HorizontalDivider()
 
@@ -78,7 +97,11 @@ fun PayloadActions(payload: ScanPayload, raw: String) {
 }
 
 @Composable
-private fun SmartActions(payload: ScanPayload, context: Context) {
+private fun SmartActions(
+    payload: ScanPayload,
+    context: Context,
+    onSaveAsLoyaltyCard: ((String) -> Unit)? = null,
+) {
     when (payload) {
         is ScanPayload.Url -> {
             ActionButton(Icons.Filled.OpenInBrowser, "Open in browser") {
@@ -120,7 +143,15 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
 
         is ScanPayload.Wifi -> {
             Text("Wi-Fi network: ${payload.ssid}", fontWeight = FontWeight.Bold)
-            payload.security?.takeIf { it.isNotEmpty() }?.let { Text("Security: $it") }
+            payload.security?.takeIf { it.isNotEmpty() }?.let { sec ->
+                Text("Security: ${friendlyWifiSecurity(sec)}")
+                if (sec.equals("HS20", ignoreCase = true)) {
+                    Text(
+                        "Passpoint profiles must be installed manually — pass this QR's contents to your IT team or the venue's portal.",
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+            }
             if (payload.hidden) Text("Hidden network")
             payload.password?.takeIf { it.isNotEmpty() }?.let { pw ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -194,6 +225,16 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
             ActionButton(Icons.Filled.Search, "Look up product") {
                 openUri(context, "https://www.google.com/search?q=${Uri.encode(payload.code)}")
             }
+            // Loyalty-card affordance — Google Wallet's loyalty-pass
+            // API needs a server-side JWT signed with a Wallet
+            // service-account key, which we can't do client-side.
+            // Instead we save a favourited History row tagged with
+            // the merchant name; the user re-finds the code via
+            // History → Favourites and the merchant tag makes
+            // search trivial.
+            if (onSaveAsLoyaltyCard != null) {
+                LoyaltyCardSaveButton(onSave = onSaveAsLoyaltyCard)
+            }
         }
 
         is ScanPayload.Crypto -> {
@@ -242,6 +283,15 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
 
         is ScanPayload.RichUrl -> {
             LabelledFieldsList(payload.payload.labelledFields())
+            // Digital identity flows can be coerced into impersonation:
+            // a stranger's QR will *try* to log you in to *their*
+            // session as *you*. Always make the user confirm.
+            if (payload.payload.kind == RichURLPayload.Kind.DIGITAL_IDENTITY) {
+                Text(
+                    "Identity flow — only continue if you started this login yourself.",
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
             val (label, _) = richUrlAction(payload.payload.kind)
             ActionButton(Icons.Filled.OpenInBrowser, label) {
                 openUri(context, payload.payload.url)
@@ -264,6 +314,64 @@ private fun SmartActions(payload: ScanPayload, context: Context) {
     }
 }
 
+/**
+ * Two-step UI for "save this product code as a loyalty card":
+ * first shows a button, then on tap an [AlertDialog] with a merchant
+ * TextField. The save itself is delegated to the caller — typically
+ * `ScannerViewModel.saveAsLoyaltyCard(merchant)`, which writes a
+ * favourited `ScanRecord` with `notes = "Loyalty: <merchant>"`.
+ */
+@Composable
+private fun LoyaltyCardSaveButton(onSave: (String) -> Unit) {
+    var showDialog by remember { mutableStateOf(false) }
+    var merchant by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(false) }
+
+    OutlinedButton(
+        onClick = { merchant = ""; showDialog = true },
+        enabled = !saved,
+    ) {
+        Icon(Icons.Filled.CreditCard, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(if (saved) "Saved as loyalty card" else "Save as loyalty card")
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Save as loyalty card") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = merchant,
+                        onValueChange = { merchant = it },
+                        label = { Text("Merchant (e.g. Tesco, IKEA)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Saved scans tagged \"Loyalty: …\" are favourited so they pin to the top of History.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSave(merchant.trim())
+                    saved = true
+                    showDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
 private fun richUrlAction(kind: RichURLPayload.Kind): Pair<String, String> = when (kind) {
     RichURLPayload.Kind.WHATS_APP    -> "Open in WhatsApp" to "WhatsApp"
     RichURLPayload.Kind.TELEGRAM     -> "Open in Telegram" to "Telegram"
@@ -275,6 +383,7 @@ private fun richUrlAction(kind: RichURLPayload.Kind): Pair<String, String> = whe
     RichURLPayload.Kind.APPLE_MUSIC  -> "Open in Apple Music" to "Apple Music"
     RichURLPayload.Kind.GOOGLE_MAPS,
     RichURLPayload.Kind.APPLE_MAPS   -> "Open in Maps" to "Maps"
+    RichURLPayload.Kind.DIGITAL_IDENTITY -> "Continue in browser" to "Identity"
 }
 
 @Composable
@@ -387,4 +496,19 @@ internal fun saveBitmapToPictures(context: Context, bitmap: android.graphics.Bit
         }
         uri
     }.getOrNull()
+}
+
+/**
+ * Map the raw `T:` field of a `WIFI:` payload to a user-friendly
+ * label. Unknown tokens pass through verbatim so a future security
+ * tag still shows *something* rather than being silently dropped.
+ * Mirrors `friendlyWifiSecurity` on iOS exactly.
+ */
+internal fun friendlyWifiSecurity(raw: String): String = when (raw.uppercase()) {
+    "WPA", "WPA2"     -> "WPA / WPA2"
+    "WEP"             -> "WEP"
+    "SAE", "WPA3"     -> "WPA3 (SAE)"
+    "HS20", "PASSPOINT", "OSU" -> "Passpoint (HS20)"
+    "NOPASS", "NONE", "" -> "None"
+    else              -> raw
 }

@@ -61,8 +61,19 @@ object CodeComposer {
     // ---- Wi-Fi --------------------------------------------------------
 
     enum class WifiSecurity(val rawValue: String, val displayName: String) {
-        WPA("WPA", "WPA"),
+        WPA("WPA", "WPA / WPA2"),
         WEP("WEP", "WEP"),
+        /** WPA3 — uses the SAE handshake. Many devices that emit a
+         *  WPA3-personal QR use this exact tag in the `T:` field;
+         *  some still emit `WPA` with a SAE-only network and let
+         *  the client fall back. We recognise both. */
+        WPA3("SAE", "WPA3 (SAE)"),
+        /** Hotspot 2.0 / Passpoint — recognised for display only;
+         *  Android's public API doesn't expose programmatic
+         *  Passpoint provisioning either, so we surface the
+         *  payload but warn the user they'll need to install the
+         *  profile manually. */
+        PASSPOINT("HS20", "Passpoint (HS20)"),
         OPEN("nopass", "None")
     }
 
@@ -80,7 +91,9 @@ object CodeComposer {
         val fields = mutableListOf<String>()
         fields += "T:${security.rawValue}"
         fields += "S:${escapeWifi(ssid)}"
-        if (security != WifiSecurity.OPEN && !password.isNullOrEmpty()) {
+        if (security != WifiSecurity.OPEN
+            && security != WifiSecurity.PASSPOINT
+            && !password.isNullOrEmpty()) {
             fields += "P:${escapeWifi(password)}"
         }
         if (hidden) fields += "H:true"

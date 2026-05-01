@@ -5,6 +5,17 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!--
+        VIBRATE drives the haptic-on-scan feedback added in 1.2 via
+        me.nettrash.scan.util.Haptics. It's a "normal" permission
+        (PROTECTION_NORMAL on every API level since 1.0), so it's
+        granted at install time and never prompts the user — no
+        runtime-permission flow needed. Without this declared, every
+        VibratorManager.vibrate() call throws SecurityException, which
+        is what crashed the app the first time a code was recognised
+        with the Settings → Haptic-on-scan toggle on.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- For pre-Android 13 devices we still need legacy storage to read picked
          images returned by ACTION_OPEN_DOCUMENT / Photo Picker. -->
     <uses-permission
@@ -42,7 +53,82 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                Android App Links: claim https://nettrash.me/scan/* so
+                the OS opens us directly when the user follows a Scan
+                deep link from any app (Mail, Chrome, Slack, …).
+
+                `autoVerify="true"` triggers Play Services to fetch
+                https://nettrash.me/.well-known/assetlinks.json on
+                first install and every versionName bump. Verification
+                only succeeds when *every* SHA-256 fingerprint in the
+                JSON validates against the installed APK's signing
+                cert; if any single key in the JSON doesn't match the
+                installed cert, autoVerify silently downgrades the
+                filter to "browsable" and the user gets the chooser.
+
+                See `nettrash-me/frontend/assets/.well-known/README.md`
+                for the canonical fingerprints and the rotation
+                procedure.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="nettrash.me" />
+                <data android:pathPrefix="/scan/" />
+            </intent-filter>
+
+            <!--
+                Share-to-Scan: appears in the Android share sheet
+                whenever the user shares an image or a PDF (single
+                or multiple). We accept image/* (jpeg, png, heic,
+                webp, …) and application/pdf — everything ML Kit
+                can decode, plus PDFs which we walk via PdfRenderer
+                in ImageDecoder.decodePdf().
+
+                Intent flow:
+                  source app → ACTION_SEND with EXTRA_STREAM →
+                    MainActivity.handleShareIntent →
+                      ShareIntakeDispatcher.handle →
+                        MainScreen presents ShareResultSheet
+                          with the decoded codes.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
+
+        <!--
+            Mints content:// URIs for files the app shares out via
+            ACTION_SEND (currently the History CSV export). The
+            authority must match what HistoryCsv.kt passes to
+            FileProvider.getUriForFile() (`<package>.fileprovider`).
+
+            grantUriPermissions=true is set per-Intent at the share
+            site, not at the manifest level; we don't expose a global
+            URI grant here.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
     </application>
 

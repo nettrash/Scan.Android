@@ -1,0 +1,1 @@
+Barcode and QR-code reader and generator. On-device. No accounts. No ads.

@@ -1,0 +1,42 @@
+Scan reads and generates 1D and 2D barcodes — and explains what's actually inside the code.
+
+Scanning
+- Live-camera scanning of every common symbology: QR, Aztec, PDF417, Data Matrix, EAN-8 / EAN-13, UPC-A / UPC-E, Code 39 (with mod-43 checksum), Code 93, Code 128, ITF, and Codabar.
+- Import an image from Photos or Files; decoded with ML Kit.
+- Multi-code disambiguation — when more than one code is in frame, tap a numbered chip to choose.
+- Continuous-scanning mode: codes save straight to History and the camera keeps running.
+
+Smart payload decomposition
+- Web / messaging: URL, mailto, tel, sms.
+- Wi-Fi: SSID + password + WPA / WPA2 / WPA3 / Passpoint.
+- Geolocation: geo:.
+- Contacts: vCard, MECARD.
+- Calendar: iCalendar VEVENT.
+- 2FA: otpauth.
+- Retail: EAN-8 / EAN-13 / UPC / ITF-14 product codes.
+- Cryptocurrency: Bitcoin, Ethereum, Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning, XRP, Stellar, Cosmos, Tron — plus stablecoin token detection (USDC, USDT, DAI on Ethereum / Tron / Solana).
+- Bank payments: EPC SEPA / Swiss QR-bill / Czech SPD / Slovak Pay by Square / EMVCo merchant (Pix, PayNow, PromptPay, UPI, DuitNow, QRIS, FPS, NAPAS, NETS …) / Indian UPI / Bezahlcode / Serbian IPS.
+- Receipts: Russian FNS, Serbian SUF.
+- Travel & identity: IATA boarding passes (PDF417), AAMVA driver's licences.
+- Digital identity: DigiD, EUDI Wallet, OpenID4VC — flagged with a security warning.
+- Loyalty cards: tag a product barcode with a merchant and pin it to History favourites.
+
+Generation
+- Build QR / Aztec / PDF417 / Code 128 from text, URLs, contacts, or Wi-Fi credentials.
+- Custom foreground / background colours with a contrast warning.
+- Embed a centred logo in QR codes.
+- Export as PNG, SVG, or PDF.
+
+History
+- Search across value, symbology, and notes.
+- Star a scan to pin it.
+- Filter by favourites only.
+- Export the entire history (or a filtered subset) as RFC 4180 CSV.
+
+Universal Links
+- Scan handles https://nettrash.me/scan/<base64url-payload> links — opening such a link from anywhere on the device drops you straight into the result sheet.
+
+Privacy
+- 100% on-device. No accounts. No analytics. No ads. No trackers.
+- Live camera + Photos / Files / image-import access only when you ask for it.
+- History is local Room storage; Android Auto Backup carries it to your Google account if you have backup enabled — nothing leaves the device otherwise.

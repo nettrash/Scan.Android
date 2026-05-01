@@ -1,7 +1,5 @@
-Read & generate barcodes — and understand what's inside.
+Scan 1.6 — Share to Scan + PDF support.
 
-• Live scan: QR, Aztec, PDF417, Data Matrix, EAN/UPC, Code 128, ITF, Codabar.
-• Smart result sheet decodes Wi-Fi, contacts, calendar events, SEPA / Swiss / Indian / Serbian payments, crypto wallets — each field tap-to-copy.
-• Generate your own QR, Aztec, PDF417 or Code 128 codes from text, URL, contact, or Wi-Fi credentials.
-• Searchable local history.
-• On-device. No network. No ads.
+• Scan now appears in the Android share sheet for images and PDFs — share a photo from any app and the result pops up directly.
+• Multi-page PDFs are walked page-by-page, both via the share sheet and the in-app Files importer.
+• Share up to 10 files at once; recognised codes are aggregated into a single list.

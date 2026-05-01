@@ -45,7 +45,7 @@ val storedVersionCode: Int = run {
 }
 
 val resolvedVersionName: String =
-    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.1"
+    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.6"
 
 // Allow opting out of the bump for a single build, e.g. when running a
 // throwaway test or when CI does not want the local file mutated:
@@ -132,6 +132,10 @@ android {
     }
     buildFeatures {
         compose = true
+        // Needed for `BuildConfig.VERSION_NAME` / `VERSION_CODE`
+        // references in the Settings + What's-New gates. AGP 8+
+        // generates BuildConfig only when this flag is on.
+        buildConfig = true
     }
     testOptions {
         unitTests {

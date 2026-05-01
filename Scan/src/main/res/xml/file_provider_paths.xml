@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+        Subset of the app-internal cache that's allowed out via
+        FileProvider. The CSV exporter writes to `cache/shared/`
+        specifically so other directories (ML Kit's barcode model
+        cache, OkHttp's response cache, Compose's font cache, …)
+        stay opaque to consumers.
+    -->
+    <cache-path name="shared" path="shared/" />
+</paths>

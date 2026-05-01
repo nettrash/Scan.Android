@@ -1,0 +1,77 @@
+# F-Droid build recipe for Scan.
+#
+# This file is the YAML the F-Droid maintainers paste into their
+# fdroiddata repository (https://gitlab.com/fdroid/fdroiddata) at
+# `metadata/me.nettrash.scan.yml` — F-Droid's build pipeline reads it
+# from there, not from this repo. We keep our authoritative copy here
+# so that whenever the recipe needs updating (new dependency, AGP /
+# Kotlin bump, signing-cert rotation), the diff lands in version
+# control alongside the change that requires it.
+#
+# Submission flow:
+#   1. Tag a release on GitHub (e.g. `git tag v1.5.0 && git push --tags`).
+#      The `versionName` in `Scan/build.gradle.kts` falls back to the
+#      tag name when CI passes `-PversionName=$TAG_NAME`.
+#   2. File a merge request against fdroiddata pasting the contents of
+#      this file (and bumping `CurrentVersion` / `CurrentVersionCode`
+#      to match the tag's `version.properties`).
+#   3. F-Droid's bot validates, builds in their reproducible-build
+#      environment, signs with the F-Droid key, and publishes.
+#
+# Reproducible-builds checklist:
+#   - `keystore.properties` is gitignored — the F-Droid build picks up
+#     no signing config from this repo and instead uses the F-Droid
+#     team's own key. Users who installed the upload-key Play build
+#     will not be able to update over the F-Droid build (different
+#     signature) and vice versa; this is by design.
+#   - The Hilt KSP processor is non-deterministic across temp dirs;
+#     F-Droid handles that via their normal build environment.
+
+Categories:
+  - System
+  - Multimedia
+  - Connectivity
+License: MIT
+AuthorName: nettrash
+AuthorEmail: nettrash@nettrash.me
+WebSite: https://nettrash.me
+SourceCode: https://github.com/nettrash/Scan.Android
+IssueTracker: https://github.com/nettrash/Scan.Android/issues
+Changelog: https://github.com/nettrash/Scan.Android/blob/main/CHANGELOG.md
+
+AutoName: Scan
+Description: |
+  Barcode and QR-code reader and generator with on-device payload
+  recognition for Wi-Fi, contacts, calendar events, payment slips
+  (SEPA, Swiss QR-bill, EMVCo), crypto wallet URIs (including USDC /
+  USDT / DAI tokens on Ethereum / Tron / Solana), driver's licences,
+  boarding passes, and identity flows (DigiD, EUDI Wallet, OpenID4VC).
+  Generates QR / Aztec / PDF417 / Code 128 codes with custom colours,
+  centred logos, and SVG / PDF export.
+
+  100 % on-device. No accounts. No analytics. No ads. No trackers.
+
+RepoType: git
+Repo: https://github.com/nettrash/Scan.Android.git
+
+Builds:
+  - versionName: '1.5'
+    versionCode: 39
+    commit: v1.5.0
+    subdir: Scan
+    gradle:
+      - yes
+    # F-Droid's anti-feature scanner flags ML Kit barcode scanning
+    # (Play Services dependency); we use the *bundled* model so no
+    # Play Services round-trip is required at runtime, but the
+    # dependency in the dependency tree still trips the heuristic.
+    # If F-Droid maintainers ask, point them at:
+    #   implementation(libs.mlkit.barcode.scanning)  // bundled
+    # in `Scan/build.gradle.kts`.
+    rm:
+      - keystore.properties
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: '1.5'
+CurrentVersionCode: 39

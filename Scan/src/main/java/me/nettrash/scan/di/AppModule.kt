@@ -22,7 +22,13 @@ object AppModule {
             context,
             ScanDatabase::class.java,
             "scan_database"
-        ).build()
+        )
+            // Add new ALTER TABLE migrations here as they're written
+            // — never use fallbackToDestructiveMigration in production:
+            // a Play upgrade silently nuking the user's saved scans
+            // would be a strictly worse outcome than crashing visibly.
+            .addMigrations(ScanDatabase.MIGRATION_1_2)
+            .build()
     }
 
     @Provides
