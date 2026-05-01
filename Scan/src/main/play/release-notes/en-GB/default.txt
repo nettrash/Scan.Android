@@ -1,5 +1,4 @@
-Scan 1.6 — Share to Scan + PDF support.
+Scan 1.7 — camera UX.
 
-• Scan now appears in the Android share sheet for images and PDFs — share a photo from any app and the result pops up directly.
-• Multi-page PDFs are walked page-by-page, both via the share sheet and the in-app Files importer.
-• Share up to 10 files at once; recognised codes are aggregated into a single list.
+• Pinch the camera preview to zoom in on far-away or small codes.
+• Centred-frame scanning: only codes inside the reticle area are recognised, so a stray code at the edge of the frame won't compete with the one you're aiming at.

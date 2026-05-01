@@ -11,10 +11,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,31 +37,26 @@ import androidx.compose.ui.unit.dp
  * and the WhatsNew copy agree on the version.
  */
 object WhatsNew {
-    const val VERSION = "1.6"
-    const val HEADLINE = "What's new in 1.6"
+    const val VERSION = "1.7"
+    const val HEADLINE = "What's new in 1.7"
 
     data class Item(val icon: ImageVector, val title: String, val detail: String)
 
     val items: List<Item> = listOf(
         Item(
-            icon = Icons.Filled.Share,
-            title = "Share to Scan",
-            detail = "Scan now appears in the Android share sheet for images and PDFs. From any app — Photos, Drive, Gmail — pick Scan and the result sheet pops up directly.",
+            icon = Icons.Filled.ZoomIn,
+            title = "Pinch to zoom",
+            detail = "Pinch the camera preview to zoom in on far-away or small codes. Posters, warehouse labels, fridge magnets — anything you couldn't quite frame before now snaps into focus.",
         ),
         Item(
-            icon = Icons.Filled.PictureAsPdf,
-            title = "PDF support",
-            detail = "Multi-page boarding passes and receipts that arrive as PDFs are now walked page-by-page through PdfRenderer. Both the share sheet and the in-app Files importer route through the same path.",
-        ),
-        Item(
-            icon = Icons.Filled.PhotoLibrary,
-            title = "Multi-image batches",
-            detail = "Share up to N images or PDFs in one go. Scan aggregates the recognised codes into a single list and lets you act on each one individually.",
+            icon = Icons.Filled.CenterFocusStrong,
+            title = "Centred-frame scanning",
+            detail = "The recogniser now only acts on codes inside the centred reticle area, so a stray code at the edge of the frame won't compete with the one you're aiming at. Aim the reticle at what you want; everything else is ignored.",
         ),
         Item(
             icon = Icons.Filled.Settings,
-            title = "Carried over from 1.2 — 1.5",
-            detail = "Settings, History favourites + CSV export, custom QR colours / logos / SVG + PDF export, multi-code disambiguation, WPA3 + Passpoint, stablecoin tokens, identity-flow detection, loyalty cards, App Links, Backup status — all here.",
+            title = "Carried over from 1.2 — 1.6",
+            detail = "Settings tab, History favourites + CSV export, QR colours / logos / SVG + PDF export, multi-code disambiguation, WPA3 + Passpoint, stablecoin tokens, identity-flow detection, loyalty cards, App Links, Backup status, Share to Scan + PDF — all here.",
         ),
     )
 }

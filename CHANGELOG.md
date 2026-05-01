@@ -8,6 +8,26 @@ The short, user-facing version of these notes ships to Google Play under `Scan/s
 
 _(nothing yet)_
 
+## [1.7] — 2026-05-01
+
+Camera UX: pinch-to-zoom + centred-frame scanning. Mirrors the iOS 1.7 work.
+
+### Pinch-to-zoom
+
+`ScannerScreen.kt`'s `AndroidView` wrapping `PreviewView` gains a `Modifier.pointerInput(cameraController) { detectTransformGestures(...) }`. Each gesture frame reads `cameraController.cameraInfo?.zoomState?.value`, multiplies `zoomRatio` by the gesture's `zoom` delta, clamps to `[zoomState.minZoomRatio, zoomState.maxZoomRatio]` (the camera-info-reported range, which is what multi-lens phones with telephoto/macro cameras need to honour), and applies via `cameraController.setZoomRatio(target)`. Returns early when `zoom == 1f` or before `bindToLifecycle` populates `cameraInfo`.
+
+`panZoomLock = true` on the gesture detector keeps the user's pan / drift from leaking into the zoom factor — pinch in, pinch out, finger drift mid-gesture stays neutral.
+
+### Region-of-interest cropping
+
+ML Kit doesn't expose a server-side ROI knob, so we filter post-detection. `roiRectFor(previewSize)` returns a centred 78 % × 78 % rect (matching the iOS `roiFraction` exactly so cross-platform behaviour stays in lockstep). The analyzer block in `LaunchedEffect` drops any barcode whose `boundingBox.center` falls outside that rect.
+
+The PreviewView's pixel size is captured via `Modifier.onSizeChanged { previewSize = it }`. Until layout finishes (`previewSize == IntSize.Zero`), `roiRectFor` returns null and the analyzer keeps every code — i.e. for the first ~30 ms the behaviour matches the previous full-frame mode, so no codes are dropped during the brief composition window.
+
+### Imports added
+
+`androidx.compose.foundation.gestures.detectTransformGestures`, `androidx.compose.ui.input.pointer.pointerInput`, `androidx.compose.ui.layout.onSizeChanged`.
+
 ## [1.6] — 2026-05-01
 
 Share-to-Scan + PDF support.

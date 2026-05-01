@@ -13,6 +13,7 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -53,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -95,6 +98,10 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
     val settings by viewModel.settings.collectAsState()
     var torchOn by remember { mutableStateOf(false) }
     var lastFeedbackValue by remember { mutableStateOf<String?>(null) }
+    // Latest known PreviewView size — drives the ROI rect we
+    // intersect against analyzer results, and feeds the pinch-
+    // gesture's clamping logic.
+    var previewSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
 
     // The detected code's bounding rect, in PreviewView coordinates.
     // `null` while we haven't seen a code yet — the reticle then falls back
@@ -158,6 +165,18 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
             // ViewModel decides what to do with multiplicity. Dedupe
             // by `rawValue` so the same code recognised twice in a
             // single frame doesn't show as two chooser chips.
+            //
+            // ROI filter: drop codes whose bounding-box centre falls
+            // outside the centred 78% × 78% rect of the preview. ML
+            // Kit doesn't expose a server-side ROI knob, so we do
+            // this in-process — saves the host-app from having to
+            // disambiguate a stray code at the edge of the frame
+            // and keeps the host UX in lockstep with the iOS
+            // `AVCaptureMetadataOutput.rectOfInterest` semantics.
+            // When previewSize is zero (first composition before
+            // layout) we keep every code, which means worst-case
+            // we use the full-frame behaviour for the first ~30 ms.
+            val roi = roiRectFor(previewSize)
             val seen = HashSet<String>()
             val ts = System.currentTimeMillis()
             val codes = barcodes.mapNotNull { b ->
@@ -168,6 +187,14 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
                     Rect(box.left.toFloat(), box.top.toFloat(),
                          box.right.toFloat(), box.bottom.toFloat())
                 } else null
+                if (roi != null && rect != null) {
+                    val cx = (rect.left + rect.right) / 2f
+                    val cy = (rect.top + rect.bottom) / 2f
+                    if (cx !in roi.left..roi.right ||
+                        cy !in roi.top..roi.bottom) {
+                        return@mapNotNull null
+                    }
+                }
                 ScannedCode(
                     value = v,
                     symbology = Symbology.fromMlKit(b.format),
@@ -231,7 +258,28 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (cameraPermission.status.isGranted) {
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { previewSize = it }
+                    .pointerInput(cameraController) {
+                        // Pinch-to-zoom: every gesture frame multiplies
+                        // the camera's *current* zoom ratio by the
+                        // gesture's delta and re-applies, clamped to
+                        // the device's reported [min, max] range
+                        // (read off `cameraInfo.zoomState` so multi-
+                        // lens phones with telephoto/macro cameras get
+                        // the right limits). `cameraInfo` is null
+                        // until `bindToLifecycle` finishes, so the
+                        // first few frames of a pinch may no-op.
+                        detectTransformGestures(panZoomLock = true) { _, _, zoom, _ ->
+                            if (zoom == 1f) return@detectTransformGestures
+                            val info = cameraController.cameraInfo ?: return@detectTransformGestures
+                            val zoomState = info.zoomState.value ?: return@detectTransformGestures
+                            val target = (zoomState.zoomRatio * zoom)
+                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                            cameraController.setZoomRatio(target)
+                        }
+                    },
                 factory = { ctx ->
                     PreviewView(ctx).apply {
                         scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -511,4 +559,29 @@ private fun ScanResultSheet(
             Button(onClick = onDismiss) { Text("Done") }
         }
     }
+}
+
+/**
+ * Centred 78% × 78% rect of [size] in PreviewView pixels — the
+ * region-of-interest used to filter ML Kit detections. Returns null
+ * when [size] is zero (first frame before layout), which the
+ * analyzer treats as "no filtering" so we don't drop everything
+ * for the first ~30 ms after composition.
+ *
+ * The 0.78 fraction matches the iOS `roiFraction` in
+ * `CameraScannerView.swift` — both platforms intersect against the
+ * same proportion of the preview, so a code framed inside the
+ * SwiftUI / Compose reticle gets through on both sides.
+ */
+private fun roiRectFor(size: androidx.compose.ui.unit.IntSize): androidx.compose.ui.geometry.Rect? {
+    if (size.width <= 0 || size.height <= 0) return null
+    val side = minOf(size.width, size.height) * 0.78f
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    return androidx.compose.ui.geometry.Rect(
+        left   = cx - side / 2f,
+        top    = cy - side / 2f,
+        right  = cx + side / 2f,
+        bottom = cy + side / 2f,
+    )
 }
