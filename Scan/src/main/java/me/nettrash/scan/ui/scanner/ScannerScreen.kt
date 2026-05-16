@@ -31,9 +31,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -253,6 +257,46 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
         }
     }
 
+    // ---- Files import (images + PDFs) -------------------------------------
+    //
+    // Mirrors the iOS `.fileImporter(allowedContentTypes: [.image, .pdf])`
+    // path added in v1.8.59. The system Photo Picker (above) is image-only
+    // by spec, so PDFs are reached via `OpenDocument` instead — which also
+    // gives the user access to third-party providers (Drive, OneDrive,
+    // Dropbox, etc.) the way iOS's Files picker does.
+    //
+    // The decoded pick routes through `ImageDecoder.decodeBatch`, which
+    // already does MIME-based dispatch between `decode` (image) and
+    // `decodePdf` (PDF) — the same code path the share-intake flow uses
+    // for `ACTION_SEND` / `ACTION_SEND_MULTIPLE` arrivals, so behaviour
+    // stays in lockstep with what shows up when the user shares a PDF
+    // into Scan from another app.
+    val pickFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        viewModel.decodingImage()
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    ImageDecoder.decodeBatch(context, listOf(uri))
+                }
+            }.fold(
+                onSuccess = { codes ->
+                    codes.firstOrNull()?.let { viewModel.onScan(it, dedupe = false) }
+                },
+                onFailure = { e ->
+                    viewModel.onImportError(e.message ?: "Couldn't read that file.")
+                }
+            )
+        }
+    }
+
+    // Import-menu expansion state. Anchors the DropdownMenu to the
+    // import IconButton; mirrors the iOS `Menu { … }` import affordance
+    // in `ScannerScreen.swift`.
+    var importMenuExpanded by remember { mutableStateOf(false) }
+
     // ---- UI --------------------------------------------------------------
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -298,15 +342,58 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
                     .align(Alignment.BottomCenter)
                     .padding(24.dp)
             ) {
-                IconButton(
-                    onClick = {
-                        pickMedia.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                // Import menu — anchors a DropdownMenu with two
+                // entries: Photo Library (system Photo Picker, images
+                // only) and Files (OpenDocument, accepts PDFs and
+                // images). Mirrors the iOS import `Menu` introduced in
+                // v1.7 and widened to PDFs in v1.8.59.
+                Box {
+                    IconButton(
+                        onClick = { importMenuExpanded = true },
+                        modifier = Modifier.background(Color(0x80000000), CircleShape)
+                    ) {
+                        Icon(
+                            Icons.Filled.Image,
+                            contentDescription = "Import image or PDF",
+                            tint = Color.White,
                         )
-                    },
-                    modifier = Modifier.background(Color(0x80000000), CircleShape)
-                ) {
-                    Icon(Icons.Filled.Image, contentDescription = "Pick image", tint = Color.White)
+                    }
+                    DropdownMenu(
+                        expanded = importMenuExpanded,
+                        onDismissRequest = { importMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Photo Library") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+                            },
+                            onClick = {
+                                importMenuExpanded = false
+                                pickMedia.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Files") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                            },
+                            onClick = {
+                                importMenuExpanded = false
+                                // Advertise both MIME types so the
+                                // system picker shows PDFs *and*
+                                // images. ImageDecoder.decodeBatch
+                                // routes by MIME at decode-time, so
+                                // either pick is handled correctly.
+                                pickFile.launch(
+                                    arrayOf("application/pdf", "image/*")
+                                )
+                            },
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { torchOn = !torchOn },
