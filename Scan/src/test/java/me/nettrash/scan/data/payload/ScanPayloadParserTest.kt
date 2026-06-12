@@ -136,4 +136,71 @@ class ScanPayloadParserTest {
         val p = ScanPayloadParser.parse(raw)
         assertThat(p).isNotInstanceOf(ScanPayload.Text::class.java)
     }
+
+    // ---- New code types (1.9) — mirrors iOS ScanTests --------------------
+
+    @Test fun parsesWalletConnectV2() {
+        val raw = "wc:7f6e504bfad60b485450578e05678ed3e8e8c4751d3c6160be17160d63ec90f9@2?relay-protocol=irn&symKey=587d5484ce2a2a6ee3ba1962fdd7e8588e06200c46823bd18fbd67def96ad303"
+        val p = ScanPayloadParser.parse(raw)
+        assertThat(p).isInstanceOf(ScanPayload.WalletConnect::class.java)
+        val wc = (p as ScanPayload.WalletConnect).payload
+        assertThat(wc.version).isEqualTo("2")
+        assertThat(wc.relayProtocol).isEqualTo("irn")
+        assertThat(wc.hasKey).isTrue()
+    }
+
+    @Test fun parsesNostrUriAndBareNsec() {
+        val p = ScanPayloadParser.parse("nostr:npub1sn0wdenkukak0d9dfczzeacvhkrgz92ak56egt7vdgzn8pv2wfqqhrjdv9")
+        assertThat(p).isInstanceOf(ScanPayload.Nostr::class.java)
+        assertThat((p as ScanPayload.Nostr).payload.entity)
+            .isEqualTo(NostrPayload.Entity.PROFILE)
+
+        val nsec = ScanPayloadParser.parse("nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5")
+        assertThat((nsec as ScanPayload.Nostr).payload.isPrivateKey).isTrue()
+    }
+
+    @Test fun parsesGoogleAuthenticatorExport() {
+        val raw = "otpauth-migration://offline?data=CjUKCkhlbGxvId6tvu8SGEV4YW1wbGU6YWxpY2VAZ29vZ2xlLmNvbRoHRXhhbXBsZSABKAEwAhABGAEgACgq"
+        val p = ScanPayloadParser.parse(raw)
+        assertThat(p).isInstanceOf(ScanPayload.OtpMigration::class.java)
+        val m = (p as ScanPayload.OtpMigration).payload
+        assertThat(m.accounts).hasSize(1)
+        assertThat(m.accounts[0].issuer).isEqualTo("Example")
+        assertThat(m.accounts[0].name).isEqualTo("Example:alice@google.com")
+        assertThat(m.accounts[0].type).isEqualTo("TOTP")
+    }
+
+    @Test fun parsesPlusCodeWithLocality() {
+        val p = ScanPayloadParser.parse("849VCWC8+R9 Stockholm, Sweden")
+        assertThat(p).isInstanceOf(ScanPayload.PlusCode::class.java)
+        val pc = (p as ScanPayload.PlusCode).payload
+        assertThat(pc.code).isEqualTo("849VCWC8+R9")
+        assertThat(pc.locality).isEqualTo("Stockholm, Sweden")
+    }
+
+    @Test fun parsesWhat3Words() {
+        val p = ScanPayloadParser.parse("///filled.count.soap")
+        assertThat(p).isInstanceOf(ScanPayload.What3Words::class.java)
+        assertThat((p as ScanPayload.What3Words).payload.words).isEqualTo("filled.count.soap")
+    }
+
+    @Test fun parsesValidIBANAndRejectsBadChecksum() {
+        val p = ScanPayloadParser.parse("GB82WEST12345698765432")
+        assertThat(p).isInstanceOf(ScanPayload.Iban::class.java)
+        assertThat((p as ScanPayload.Iban).payload.formatted).isEqualTo("GB82 WEST 1234 5698 7654 32")
+
+        assertThat(ScanPayloadParser.parse("GB00WEST12345698765432"))
+            .isNotInstanceOf(ScanPayload.Iban::class.java)
+    }
+
+    @Test fun parsesPaymentHandlesAndMessaging() {
+        assertThat((ScanPayloadParser.parse("https://paypal.me/alice") as ScanPayload.RichUrl).payload.kind)
+            .isEqualTo(RichURLPayload.Kind.PAY_PAL)
+        assertThat((ScanPayloadParser.parse("https://cash.app/\$alice") as ScanPayload.RichUrl).payload.kind)
+            .isEqualTo(RichURLPayload.Kind.CASH_APP)
+        assertThat((ScanPayloadParser.parse("alipays://platformapi/startapp?saId=10000007") as ScanPayload.RichUrl).payload.kind)
+            .isEqualTo(RichURLPayload.Kind.ALI_PAY)
+        assertThat((ScanPayloadParser.parse("https://meet.google.com/abc-defg-hij") as ScanPayload.RichUrl).payload.kind)
+            .isEqualTo(RichURLPayload.Kind.MEETING)
+    }
 }

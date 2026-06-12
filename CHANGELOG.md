@@ -8,6 +8,74 @@ The short, user-facing version of these notes ships to Google Play under `Scan/s
 
 _(nothing yet)_
 
+## [1.9] — 2026-06-12
+
+"Open in …" hand-off reliability — every payment / wallet / magnet button now
+does something useful when the target app isn't installed, and UPI lets you
+pick the app instead of silently routing to WhatsApp. Mirrors the iOS 1.9 work.
+
+> Versions jump 1.7 → 1.9 to stay in lockstep with iOS. There is no Android 1.8:
+> iOS 1.8 was the Mac Catalyst + visionOS release, which has no Android counterpart.
+
+### Added
+
+Six new payload types, byte-for-byte matching the iOS 1.9 detectors (shared
+`test-fixtures/`, parallel `ScanPayloadParserTest` cases):
+
+- **WalletConnect** (`wc:…@2` / `@1`) — dApp↔wallet pairing QR; "Open in wallet"
+  with the Play Store fallback. (`CryptoPayload.kt`)
+- **Nostr** — `nostr:` URIs and bare NIP-19 tokens (`npub1…`, `note1…`, …); an
+  `nsec1…` secret key shows a do-not-share warning instead of an open action.
+  (`CryptoPayload.kt`)
+- **Google Authenticator export** (`otpauth-migration://…`) — a hand-rolled
+  protobuf reader lists the exported accounts (issuer + name + TOTP/HOTP);
+  secrets are never shown. (`ScanPayload.kt`)
+- **Open Location Code / Plus Code** (`849VCWC8+R9` + optional locality) →
+  "Open in Maps". (`ScanPayload.kt`)
+- **what3words** (`///filled.count.soap`, `w3w://…`) → opens what3words.com.
+  (`ScanPayload.kt`)
+- **IBAN** — ISO 7064 mod-97 + country-prefix validated, grouped for display.
+  (`BankPaymentPayloads.kt`)
+
+Personal-payment handles are branded with an "Open in …" action (Play Store
+fallback): **PayPal**, **Venmo**, **Cash App**, **Revolut**, **TWINT**,
+**Alipay**, **WeChat Pay** — plus **Signal**, **Matrix**, and **Zoom / Teams /
+Google Meet** links. (`RichURLPayload.kt`)
+
+### Fixed
+
+Custom-scheme hand-offs (`bitcoin:`, `ethereum:`, `lightning:`, `litecoin:`,
+`magnet:`, `swish:`, `vipps:`, `bank:`/`bezahlcode:`, `mobilepay:`, `bizum:`,
+`ideal:`, …) were launched with a plain `ACTION_VIEW` whose only failure
+handling was a brief "No app to handle that link." toast. When no installed
+app claims the scheme — the "Open in Wallet / torrent client / Swish / Vipps /
+Bezahlcode does nothing" report — that toast was the entire fallback.
+
+`Crypto` (Open in Wallet), `Magnet` (Open in torrent client) and `Regional`
+(Open in Swish / Vipps / MobilePay / Bizum / iDEAL / a Bezahlcode banking app)
+now route through `openExternally(...)`, which on `ActivityNotFoundException`
+shows a **"No app installed"** dialog offering **Find on Play Store**
+(deep-linked to a relevant search — "bitcoin wallet", "torrent client",
+"swish", …) or **Copy link**, instead of dead-ending. `startActivity` (not
+`PackageManager.resolveActivity`) is the failure signal, since Android 11+
+package-visibility filtering can hide an installed handler from `resolveActivity`
+while the launch itself still succeeds.
+
+Bare crypto addresses scanned without a URI scheme (a plain `bc1q…`, `0x…`, or
+a raw `lnbc…` Lightning invoice) now synthesize the chain's BIP-21
+`scheme:address` form (`CryptoPayload.walletUri()`) before launching, so "Open
+in Wallet" actually reaches a wallet for the common bare-address case.
+
+### Changed
+
+**UPI now opens through an app chooser.** A plain `ACTION_VIEW` on `upi://pay?…`
+goes straight to whichever app is the default UPI handler — frequently WhatsApp
+Pay, which is why "Open in UPI app" was opening WhatsApp. The action now uses
+`Intent.createChooser`, so the user picks the UPI app (Google Pay, PhonePe,
+Paytm, …) every time. This is the Android-native equivalent of the manual app
+picker the iOS build had to build by hand (iOS has no system chooser for custom
+schemes).
+
 ## [1.7] — 2026-05-01
 
 Camera UX: pinch-to-zoom + centred-frame scanning. Mirrors the iOS 1.7 work.

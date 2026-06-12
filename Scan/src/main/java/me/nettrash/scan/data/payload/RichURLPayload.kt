@@ -30,6 +30,26 @@ data class RichURLPayload(
          *  Special-cased so the result sheet can show a security
          *  warning before the user taps "Continue in browser". */
         DIGITAL_IDENTITY("Digital identity"),
+
+        // New in 1.9 — personal-payment handles.
+        PAY_PAL("PayPal"),
+        VENMO("Venmo"),
+        CASH_APP("Cash App"),
+        REVOLUT("Revolut"),
+        TWINT("TWINT"),
+        ALI_PAY("Alipay"),
+        WE_CHAT_PAY("WeChat Pay"),
+
+        // New in 1.9 — messaging / meeting deep links.
+        SIGNAL("Signal"),
+        MATRIX("Matrix"),
+        MEETING("Video meeting");
+
+        /** True for the personal-payment brands, which the UI routes
+         *  through the "no app installed" Play Store fallback. */
+        val isPayment: Boolean
+            get() = this == PAY_PAL || this == VENMO || this == CASH_APP ||
+                this == REVOLUT || this == TWINT || this == ALI_PAY || this == WE_CHAT_PAY
     }
 
     fun labelledFields(): List<LabelledField> {
@@ -45,6 +65,11 @@ object RichURLParser {
     fun parse(rawUrl: String): RichURLPayload? {
         val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
+
+        // Custom app-scheme service URIs (Alipay, WeChat Pay, TWINT, Signal,
+        // Matrix) — handled before the http/https host matching. New in 1.9.
+        parseAppScheme(rawUrl, scheme)?.let { return it }
+
         if (scheme != "http" && scheme != "https") return null
         val host = uri.host?.lowercase(Locale.ROOT) ?: return null
         val path = uri.path.orEmpty()
@@ -189,7 +214,83 @@ object RichURLParser {
             }
         }
 
+        // ---- Personal-payment handles (https form). New in 1.9. ----
+        parsePaymentHost(rawUrl, host, path)?.let { return it }
+
+        // ---- Messaging / meeting links (https form). New in 1.9. ----
+        parseMessagingHost(rawUrl, uri, host, path)?.let { return it }
+
         return null
+    }
+
+    // ---- Personal-payment handles (1.9) ----
+
+    private fun parsePaymentHost(rawUrl: String, host: String, path: String): RichURLPayload? {
+        val handle = path.trim('/')
+        fun payload(kind: RichURLPayload.Kind, label: String = "Handle") = RichURLPayload(
+            kind, rawUrl,
+            if (handle.isEmpty()) emptyList() else listOf(LabelledField(label, handle))
+        )
+        return when (host) {
+            "paypal.me", "www.paypal.me" -> payload(RichURLPayload.Kind.PAY_PAL)
+            "venmo.com", "www.venmo.com", "account.venmo.com" -> {
+                val user = path.split('/').lastOrNull { it.isNotEmpty() } ?: handle
+                RichURLPayload(
+                    RichURLPayload.Kind.VENMO, rawUrl,
+                    if (user.isEmpty()) emptyList() else listOf(LabelledField("User", user))
+                )
+            }
+            "cash.app" -> payload(RichURLPayload.Kind.CASH_APP, "Cashtag")
+            "revolut.me" -> payload(RichURLPayload.Kind.REVOLUT)
+            "qr.alipay.com", "render.alipay.com" ->
+                RichURLPayload(RichURLPayload.Kind.ALI_PAY, rawUrl, emptyList())
+            else -> null
+        }
+    }
+
+    // ---- Messaging / meeting links (1.9) ----
+
+    private fun parseMessagingHost(rawUrl: String, uri: Uri, host: String, path: String): RichURLPayload? {
+        if (host == "signal.me") {
+            return RichURLPayload(RichURLPayload.Kind.SIGNAL, rawUrl, emptyList())
+        }
+        if (host == "matrix.to") {
+            val entity = uri.fragment?.trimStart('/')
+            return RichURLPayload(
+                RichURLPayload.Kind.MATRIX, rawUrl,
+                if (entity.isNullOrEmpty()) emptyList() else listOf(LabelledField("Address", entity))
+            )
+        }
+        val service: String? = when {
+            (host == "zoom.us" || host.endsWith(".zoom.us")) && path.contains("/j/") -> "Zoom"
+            host == "teams.microsoft.com" || host == "teams.live.com" -> "Microsoft Teams"
+            host == "meet.google.com" -> "Google Meet"
+            else -> null
+        }
+        return service?.let {
+            RichURLPayload(RichURLPayload.Kind.MEETING, rawUrl, listOf(LabelledField("Service", it)))
+        }
+    }
+
+    // ---- App-scheme service URIs (1.9) ----
+
+    private fun parseAppScheme(rawUrl: String, scheme: String): RichURLPayload? = when (scheme) {
+        "alipay", "alipays", "alipayqr" ->
+            RichURLPayload(RichURLPayload.Kind.ALI_PAY, rawUrl, emptyList())
+        "weixin", "wxp", "wechat" ->
+            RichURLPayload(RichURLPayload.Kind.WE_CHAT_PAY, rawUrl, emptyList())
+        "twint" ->
+            RichURLPayload(RichURLPayload.Kind.TWINT, rawUrl, emptyList())
+        "sgnl" ->
+            RichURLPayload(RichURLPayload.Kind.SIGNAL, rawUrl, emptyList())
+        "matrix" -> {
+            val entity = rawUrl.removePrefix("matrix:").removePrefix("MATRIX:")
+            RichURLPayload(
+                RichURLPayload.Kind.MATRIX, rawUrl,
+                if (entity.isEmpty()) emptyList() else listOf(LabelledField("Address", entity))
+            )
+        }
+        else -> null
     }
 
     /**

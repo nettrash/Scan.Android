@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.nettrash.scan.data.payload.LabelledField
+import me.nettrash.scan.data.payload.RegionalPaymentPayload
 import me.nettrash.scan.data.payload.RichURLPayload
 import me.nettrash.scan.data.payload.ScanPayload
 
@@ -102,6 +103,12 @@ private fun SmartActions(
     context: Context,
     onSaveAsLoyaltyCard: ((String) -> Unit)? = null,
 ) {
+    // "No app installed" fallback. Populated when an `ACTION_VIEW` for a
+    // custom-scheme payment / wallet / magnet URI finds no handler, so the
+    // user gets a Play Store search + Copy link instead of a button that
+    // only shows a brief toast. Mirrors iOS's `appFallback` alert.
+    var appFallback by remember { mutableStateOf<AppFallback?>(null) }
+
     when (payload) {
         is ScanPayload.Url -> {
             ActionButton(Icons.Filled.OpenInBrowser, "Open in browser") {
@@ -239,7 +246,15 @@ private fun SmartActions(
 
         is ScanPayload.Crypto -> {
             LabelledFieldsList(payload.payload.labelledFields())
-            ActionButton(Icons.Filled.CreditCard, "Open in Wallet") { openUri(context, payload.payload.raw) }
+            ActionButton(Icons.Filled.CreditCard, "Open in Wallet") {
+                openExternally(context, payload.payload.walletUri()) {
+                    appFallback = AppFallback(
+                        itemLabel = "${payload.payload.chain.displayName} wallet",
+                        searchTerm = payload.payload.walletSearchTerm(),
+                        raw = payload.payload.raw,
+                    )
+                }
+            }
         }
 
         is ScanPayload.EpcPayment -> LabelledFieldsList(payload.payload.labelledFields())
@@ -259,8 +274,16 @@ private fun SmartActions(
 
         is ScanPayload.UpiPayment -> {
             LabelledFieldsList(payload.payload.labelledFields())
+            // A plain ACTION_VIEW on `upi://pay?…` goes straight to whatever
+            // app is set as the default UPI handler — frequently WhatsApp Pay,
+            // which is why "Open in UPI app" was opening WhatsApp. Forcing a
+            // chooser lets the user pick the UPI app every time (the Android
+            // equivalent of iOS's manual app picker, which iOS needs because
+            // it has no system chooser for custom schemes).
             ActionButton(Icons.Filled.OpenInBrowser, "Open in UPI app") {
-                openUri(context, payload.payload.raw)
+                openWithChooser(context, payload.payload.raw, "Pay with…") {
+                    appFallback = AppFallback("UPI app", "UPI payment", payload.payload.raw)
+                }
             }
         }
 
@@ -270,14 +293,22 @@ private fun SmartActions(
         is ScanPayload.Regional -> {
             LabelledFieldsList(payload.payload.labelledFields())
             ActionButton(Icons.Filled.OpenInBrowser, "Open in ${payload.payload.scheme.displayName}") {
-                openUri(context, payload.payload.raw)
+                openExternally(context, payload.payload.raw) {
+                    appFallback = AppFallback(
+                        itemLabel = regionalItemLabel(payload.payload.scheme),
+                        searchTerm = regionalSearchTerm(payload.payload.scheme),
+                        raw = payload.payload.raw,
+                    )
+                }
             }
         }
 
         is ScanPayload.Magnet -> {
             LabelledFieldsList(payload.payload.labelledFields())
             ActionButton(Icons.Filled.OpenInBrowser, "Open in torrent client") {
-                openUri(context, payload.payload.raw)
+                openExternally(context, payload.payload.raw) {
+                    appFallback = AppFallback("torrent client", "torrent client", payload.payload.raw)
+                }
             }
         }
 
@@ -294,8 +325,83 @@ private fun SmartActions(
             }
             val (label, _) = richUrlAction(payload.payload.kind)
             ActionButton(Icons.Filled.OpenInBrowser, label) {
-                openUri(context, payload.payload.url)
+                // Personal-payment brands can hand off to a custom-scheme app
+                // (alipays://, weixin://, twint://) that may not be installed;
+                // route them through the Play Store fallback. The https-backed
+                // kinds open the browser and never hit it.
+                if (payload.payload.kind.isPayment) {
+                    openExternally(context, payload.payload.url) {
+                        appFallback = AppFallback(
+                            "${payload.payload.kind.displayName} app",
+                            payload.payload.kind.displayName,
+                            payload.payload.url,
+                        )
+                    }
+                } else {
+                    openUri(context, payload.payload.url)
+                }
             }
+        }
+
+        is ScanPayload.WalletConnect -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            ActionButton(Icons.Filled.CreditCard, "Open in wallet") {
+                openExternally(context, payload.payload.raw) {
+                    appFallback = AppFallback(
+                        "WalletConnect-compatible wallet", "crypto wallet", payload.payload.raw
+                    )
+                }
+            }
+        }
+
+        is ScanPayload.Nostr -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            if (payload.payload.isPrivateKey) {
+                Text(
+                    "This is a secret key (nsec) — never share it or enter it into an app you don't trust.",
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            } else {
+                val uri = if (payload.payload.raw.lowercase(java.util.Locale.ROOT).startsWith("nostr:"))
+                    payload.payload.raw else "nostr:${payload.payload.id}"
+                ActionButton(Icons.Filled.Person, "Open in Nostr client") {
+                    openExternally(context, uri) {
+                        appFallback = AppFallback("Nostr client", "nostr", uri)
+                    }
+                }
+            }
+        }
+
+        is ScanPayload.OtpMigration -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            Text(
+                "Bulk 2FA export. Use Share to hand it to an authenticator app — there's no universal import URL, and the codes' secrets are never displayed here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+
+        is ScanPayload.PlusCode -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            ActionButton(Icons.Filled.Map, "Open in Maps") {
+                openUri(context, "geo:0,0?q=${Uri.encode(payload.payload.mapsQuery)}")
+            }
+        }
+
+        is ScanPayload.What3Words -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            ActionButton(Icons.Filled.Map, "Open in what3words") {
+                openUri(context, "https://what3words.com/${payload.payload.words}")
+            }
+        }
+
+        is ScanPayload.Iban -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            Text(
+                "Checksum-valid ${payload.payload.countryCode} IBAN. Copy it into your bank app to pay or add a payee — there's no universal \"open\" for a bare account number.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
         }
 
         is ScanPayload.GS1 -> {
@@ -312,6 +418,70 @@ private fun SmartActions(
 
         is ScanPayload.Text -> Unit
     }
+
+    appFallback?.let { fb ->
+        AppFallbackDialog(fallback = fb, onDismiss = { appFallback = null })
+    }
+}
+
+/** Metadata for the "no app installed" fallback dialog. [itemLabel] is a noun
+ *  phrase that reads naturally after "No … is installed" (e.g. "Bitcoin
+ *  wallet", "torrent client", "Swish app"). Mirrors iOS's `AppFallback`. */
+data class AppFallback(
+    val itemLabel: String,
+    val searchTerm: String,
+    val raw: String,
+)
+
+/**
+ * Shown when `ACTION_VIEW` for a payment / wallet / magnet URI found no
+ * handler. Offers a Play Store search for a compatible app or a Copy-link
+ * escape hatch, instead of dead-ending. Dismissing (tap-away / back) is the
+ * cancel path. Mirrors iOS's "No app installed" alert.
+ */
+@Composable
+private fun AppFallbackDialog(fallback: AppFallback, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("No app installed") },
+        text = {
+            Text(
+                "No ${fallback.itemLabel} is installed to open this. " +
+                    "Find one on the Play Store, or copy the link to use it elsewhere."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                openPlayStoreSearch(context, fallback.searchTerm)
+                onDismiss()
+            }) { Text("Find on Play Store") }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                copyToClipboard(context, fallback.raw)
+                onDismiss()
+            }) { Text("Copy link") }
+        },
+    )
+}
+
+private fun regionalItemLabel(scheme: RegionalPaymentPayload.Scheme): String = when (scheme) {
+    RegionalPaymentPayload.Scheme.BEZAHLCODE -> "compatible banking app"
+    RegionalPaymentPayload.Scheme.SWISH -> "Swish app"
+    RegionalPaymentPayload.Scheme.VIPPS -> "Vipps app"
+    RegionalPaymentPayload.Scheme.MOBILEPAY -> "MobilePay app"
+    RegionalPaymentPayload.Scheme.BIZUM -> "Bizum-enabled banking app"
+    RegionalPaymentPayload.Scheme.IDEAL -> "iDEAL-enabled banking app"
+}
+
+private fun regionalSearchTerm(scheme: RegionalPaymentPayload.Scheme): String = when (scheme) {
+    RegionalPaymentPayload.Scheme.BEZAHLCODE -> "banking"
+    RegionalPaymentPayload.Scheme.SWISH -> "swish"
+    RegionalPaymentPayload.Scheme.VIPPS -> "vipps"
+    RegionalPaymentPayload.Scheme.MOBILEPAY -> "mobilepay"
+    RegionalPaymentPayload.Scheme.BIZUM -> "bizum"
+    RegionalPaymentPayload.Scheme.IDEAL -> "ideal banking"
 }
 
 /**
@@ -384,6 +554,16 @@ private fun richUrlAction(kind: RichURLPayload.Kind): Pair<String, String> = whe
     RichURLPayload.Kind.GOOGLE_MAPS,
     RichURLPayload.Kind.APPLE_MAPS   -> "Open in Maps" to "Maps"
     RichURLPayload.Kind.DIGITAL_IDENTITY -> "Continue in browser" to "Identity"
+    RichURLPayload.Kind.PAY_PAL      -> "Open in PayPal" to "PayPal"
+    RichURLPayload.Kind.VENMO        -> "Open in Venmo" to "Venmo"
+    RichURLPayload.Kind.CASH_APP     -> "Open in Cash App" to "Cash App"
+    RichURLPayload.Kind.REVOLUT      -> "Open in Revolut" to "Revolut"
+    RichURLPayload.Kind.TWINT        -> "Open in TWINT" to "TWINT"
+    RichURLPayload.Kind.ALI_PAY      -> "Open in Alipay" to "Alipay"
+    RichURLPayload.Kind.WE_CHAT_PAY  -> "Open in WeChat Pay" to "WeChat Pay"
+    RichURLPayload.Kind.SIGNAL       -> "Open in Signal" to "Signal"
+    RichURLPayload.Kind.MATRIX       -> "Open in Matrix" to "Matrix"
+    RichURLPayload.Kind.MEETING      -> "Join meeting" to "Meeting"
 }
 
 @Composable
@@ -449,6 +629,48 @@ private fun openUri(context: Context, uriString: String) {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString))
     runCatching { context.startActivity(intent) }
         .onFailure { Toast.makeText(context, "No app to handle that link.", Toast.LENGTH_SHORT).show() }
+}
+
+/**
+ * Open a custom-scheme URI (`bitcoin:`, `magnet:`, `swish:`, …), invoking
+ * [onNoApp] when nothing on the device can handle it instead of just
+ * toasting. `startActivity` — not `PackageManager.resolveActivity` — is the
+ * reliable signal here: on Android 11+ package-visibility filtering can make
+ * `resolveActivity` return null even when a handler exists, but launching the
+ * intent always works (or throws `ActivityNotFoundException`, which we catch).
+ */
+private fun openExternally(context: Context, uriString: String, onNoApp: () -> Unit) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString))
+    runCatching { context.startActivity(intent) }.onFailure { onNoApp() }
+}
+
+/**
+ * Open a URI through an explicit app chooser, so the user picks the target
+ * app every time rather than being silently routed to a previously-set
+ * default. Used for UPI, where the default handler is frequently WhatsApp
+ * Pay. `createChooser` shows all installed handlers (the system resolver has
+ * full package visibility), and surfaces its own "no apps" message when none
+ * exist; [onNoApp] is a defensive fallback for the rare launch failure.
+ */
+private fun openWithChooser(context: Context, uriString: String, title: String, onNoApp: () -> Unit) {
+    val view = Intent(Intent.ACTION_VIEW, Uri.parse(uriString))
+    val chooser = Intent.createChooser(view, title)
+    runCatching { context.startActivity(chooser) }.onFailure { onNoApp() }
+}
+
+/**
+ * Open the Play Store to a search for [term]. Tries the `market://` deep link
+ * first (opens the Play Store app directly) and falls back to the web
+ * storefront if the Play Store app is absent (e.g. on de-Googled devices).
+ */
+private fun openPlayStoreSearch(context: Context, term: String) {
+    val q = Uri.encode(term)
+    val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$q&c=apps"))
+    runCatching { context.startActivity(market) }.onFailure {
+        val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=$q&c=apps"))
+        runCatching { context.startActivity(web) }
+            .onFailure { Toast.makeText(context, "Couldn't open the Play Store.", Toast.LENGTH_SHORT).show() }
+    }
 }
 
 private fun addToContacts(context: Context, contact: me.nettrash.scan.data.payload.ContactPayload) {

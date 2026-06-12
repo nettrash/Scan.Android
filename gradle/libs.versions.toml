@@ -18,7 +18,7 @@ mlkitBarcode = "17.3.0"
 zxing = "3.5.3"
 accompanistPermissions = "0.37.3"
 junit = "4.13.2"
-robolectric = "4.14.1"
+robolectric = "4.15.1"
 truth = "1.4.4"
 
 [libraries]

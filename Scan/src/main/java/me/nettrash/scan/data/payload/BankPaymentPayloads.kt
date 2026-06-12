@@ -557,3 +557,63 @@ object BankPaymentParser {
         return EMVPaymentPayload(out)
     }
 }
+
+// ---- Bare IBAN (1.9) --------------------------------------------------
+
+/** A recognised, checksum-valid IBAN scanned on its own. Mirrors iOS
+ *  [IBANPayload]. */
+data class IBANPayload(
+    val iban: String,
+    val countryCode: String,
+    val raw: String
+) {
+    /** Grouped into blocks of four for readability. */
+    val formatted: String
+        get() = buildString {
+            iban.forEachIndexed { i, c ->
+                if (i > 0 && i % 4 == 0) append(' ')
+                append(c)
+            }
+        }
+
+    fun labelledFields(): List<LabelledField> = listOf(
+        LabelledField("IBAN", formatted),
+        LabelledField("Country", countryCode),
+    )
+}
+
+object IBANParser {
+    private val countries: Set<String> = setOf(
+        "AD","AE","AL","AT","AZ","BA","BE","BG","BH","BR","BY","CH","CR","CY",
+        "CZ","DE","DK","DO","EE","EG","ES","FI","FO","FR","GB","GE","GI","GL",
+        "GR","GT","HR","HU","IE","IL","IQ","IS","IT","JO","KW","KZ","LB","LC",
+        "LI","LT","LU","LV","LY","MC","MD","ME","MK","MR","MT","MU","NL","NO",
+        "PK","PL","PS","PT","QA","RO","RS","SA","SC","SD","SE","SI","SK","SM",
+        "ST","SV","TL","TN","TR","UA","VA","VG","XK",
+    )
+
+    fun parse(raw: String): IBANPayload? {
+        val normalized = raw.replace(" ", "").uppercase(java.util.Locale.ROOT)
+        if (normalized.length !in 15..34) return null
+        if (!normalized[0].isLetter() || !normalized[1].isLetter() ||
+            !normalized[2].isDigit() || !normalized[3].isDigit()) return null
+        if (!normalized.all { it.isLetterOrDigit() }) return null
+        val country = normalized.substring(0, 2)
+        if (country !in countries || !isValidMod97(normalized)) return null
+        return IBANPayload(normalized, country, raw)
+    }
+
+    /** ISO 7064 mod-97-10. */
+    private fun isValidMod97(iban: String): Boolean {
+        val rearranged = iban.substring(4) + iban.substring(0, 4)
+        var remainder = 0
+        for (ch in rearranged) {
+            remainder = when {
+                ch.isDigit() -> (remainder * 10 + (ch - '0')) % 97
+                ch in 'A'..'Z' -> (remainder * 100 + (ch - 'A' + 10)) % 97
+                else -> return false
+            }
+        }
+        return remainder == 1
+    }
+}

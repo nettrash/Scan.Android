@@ -1,4 +1,5 @@
-Scan 1.7 — camera UX.
+Scan 1.9 — more codes, smarter "Open in…".
 
-• Pinch the camera preview to zoom in on far-away or small codes.
-• Centred-frame scanning: only codes inside the reticle area are recognised, so a stray code at the edge of the frame won't compete with the one you're aiming at.
+• Open in Wallet / torrent client / Swish / Vipps / Bezahlcode no longer does nothing when the app isn't installed — you get a "Find on Play Store" or "Copy link" prompt.
+• Open in UPI app lets you pick the app instead of jumping to WhatsApp.
+• New formats: WalletConnect, Nostr, Plus Codes, what3words, IBAN, 2FA exports, and PayPal/Cash App/Alipay/WeChat handles.

@@ -45,6 +45,13 @@ sealed class ScanPayload {
     data class GS1(val payload: GS1Payload) : ScanPayload()
     data class BoardingPass(val payload: BoardingPassPayload) : ScanPayload()
     data class DrivingLicense(val payload: DrivingLicensePayload) : ScanPayload()
+    // New in 1.9.
+    data class WalletConnect(val payload: WalletConnectPayload) : ScanPayload()
+    data class Nostr(val payload: NostrPayload) : ScanPayload()
+    data class OtpMigration(val payload: OTPMigrationPayload) : ScanPayload()
+    data class PlusCode(val payload: PlusCodePayload) : ScanPayload()
+    data class What3Words(val payload: What3WordsPayload) : ScanPayload()
+    data class Iban(val payload: IBANPayload) : ScanPayload()
     data class Text(val text: String) : ScanPayload()
 
     /** Short label describing the payload kind, for UI badges. */
@@ -77,6 +84,12 @@ sealed class ScanPayload {
             is GS1 -> "GS1"
             is BoardingPass -> "Boarding Pass"
             is DrivingLicense -> "Driver's Licence"
+            is WalletConnect -> "WalletConnect"
+            is Nostr -> "Nostr"
+            is OtpMigration -> "2FA export"
+            is PlusCode -> "Plus Code"
+            is What3Words -> "what3words"
+            is Iban -> "IBAN"
             is Text -> "Text"
         }
 }
@@ -166,6 +179,16 @@ object ScanPayloadParser {
             }
         }
 
+        // WalletConnect pairing URI — `wc:<topic>@<version>?…`.
+        if (lower.startsWith("wc:")) {
+            WalletConnectParser.parse(trimmed)?.let { return ScanPayload.WalletConnect(it) }
+        }
+
+        // Nostr — `nostr:` URI. Bare NIP-19 tokens are caught near the end.
+        if (lower.startsWith("nostr:")) {
+            NostrParser.parse(trimmed)?.let { return ScanPayload.Nostr(it) }
+        }
+
         // UPI (India).
         if (lower.startsWith("upi:")) {
             RegionalPaymentParser.parseUPI(trimmed)?.let { return ScanPayload.UpiPayment(it) }
@@ -214,6 +237,11 @@ object ScanPayloadParser {
             return parseGeo(trimmed) ?: ScanPayload.Text(trimmed)
         }
 
+        // Google Authenticator bulk export — `otpauth-migration://offline?data=…`.
+        if (lower.startsWith("otpauth-migration:")) {
+            OTPMigrationParser.parse(trimmed)?.let { return ScanPayload.OtpMigration(it) }
+        }
+
         // otpauth://
         if (lower.startsWith("otpauth://")) {
             return ScanPayload.Otp(trimmed)
@@ -247,6 +275,21 @@ object ScanPayloadParser {
             GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
         }
 
+        // what3words — `///word.word.word` or `w3w://…`.
+        if (trimmed.startsWith("///") || lower.startsWith("w3w://")) {
+            What3WordsParser.parse(trimmed)?.let { return ScanPayload.What3Words(it) }
+        }
+
+        // Service URIs with a custom app scheme — Alipay, WeChat Pay, TWINT,
+        // Signal, Matrix. The https forms are handled by the URL block below.
+        if (schemeIdx > 0) {
+            val sc = trimmed.substring(0, schemeIdx).lowercase(Locale.ROOT)
+            if (sc in setOf("alipay", "alipays", "alipayqr", "weixin", "wxp",
+                    "wechat", "twint", "sgnl", "matrix")) {
+                RichURLParser.parse(trimmed)?.let { return ScanPayload.RichUrl(it) }
+            }
+        }
+
         // URL-ish
         val uri = runCatching { Uri.parse(trimmed) }.getOrNull()
         val sch = uri?.scheme?.lowercase(Locale.ROOT)
@@ -277,6 +320,17 @@ object ScanPayloadParser {
         // text fallback because these are otherwise indistinguishable from
         // arbitrary alphanumeric strings.
         CryptoURIParser.parseBare(trimmed)?.let { return ScanPayload.Crypto(it) }
+
+        // Bare Nostr NIP-19 token (npub1… / note1… / nevent1… / nsec1…).
+        if (NostrParser.looksLikeBare(trimmed)) {
+            NostrParser.parse(trimmed)?.let { return ScanPayload.Nostr(it) }
+        }
+
+        // Open Location Code (Plus Code) — e.g. "849VCWC8+R9 Stockholm".
+        PlusCodeParser.parse(trimmed)?.let { return ScanPayload.PlusCode(it) }
+
+        // Bare IBAN — structurally valid + ISO 7064 mod-97 checksum.
+        IBANParser.parse(trimmed)?.let { return ScanPayload.Iban(it) }
 
         return ScanPayload.Text(trimmed)
     }
@@ -491,5 +545,195 @@ object ScanPayloadParser {
         return ScanPayload.Contact(
             ContactPayload(fullName, phones, emails, urls, organization, note)
         )
+    }
+}
+
+// ---- 2FA bulk export (otpauth-migration://) — 1.9 ---------------------
+
+/** A decoded Google-Authenticator bulk export. Surfaces *which* accounts
+ *  are inside (issuer + name + type) but never the shared secrets. Mirrors
+ *  iOS [OTPMigrationPayload]. */
+data class OTPMigrationPayload(
+    val accounts: List<Account>,
+    val raw: String
+) {
+    data class Account(val issuer: String?, val name: String?, val type: String)
+
+    fun labelledFields(): List<LabelledField> {
+        val rows = mutableListOf(
+            LabelledField("Format", "Google Authenticator export"),
+            LabelledField("Accounts", accounts.size.toString()),
+        )
+        accounts.forEachIndexed { i, a ->
+            val title = listOfNotNull(a.issuer, a.name).filter { it.isNotEmpty() }.joinToString(" — ")
+            rows += LabelledField("${i + 1}. ${a.type}", title.ifEmpty { "(unnamed)" })
+        }
+        return rows
+    }
+}
+
+object OTPMigrationParser {
+    fun parse(raw: String): OTPMigrationPayload? {
+        if (!raw.lowercase(Locale.ROOT).startsWith("otpauth-migration:")) return null
+        val dataParam = extractDataParam(raw) ?: return OTPMigrationPayload(emptyList(), raw)
+        val bytes = decodeBase64(dataParam) ?: return OTPMigrationPayload(emptyList(), raw)
+        return OTPMigrationPayload(decodeMigration(bytes), raw)
+    }
+
+    private fun extractDataParam(raw: String): String? {
+        val q = raw.indexOf('?').takeIf { it >= 0 } ?: return null
+        for (pair in raw.substring(q + 1).split('&')) {
+            val kv = pair.split('=', limit = 2)
+            if (kv.size == 2 && kv[0].equals("data", ignoreCase = true)) {
+                return runCatching {
+                    URLDecoder.decode(kv[1], StandardCharsets.UTF_8.name())
+                }.getOrDefault(kv[1])
+            }
+        }
+        return null
+    }
+
+    private fun decodeBase64(s: String): ByteArray? {
+        var t = s.replace('-', '+').replace('_', '/')
+        val pad = (4 - t.length % 4) % 4
+        t += "=".repeat(pad)
+        return runCatching { java.util.Base64.getDecoder().decode(t) }.getOrNull()
+    }
+
+    private fun decodeMigration(data: ByteArray): List<OTPMigrationPayload.Account> {
+        val reader = ProtoReader(data)
+        val accounts = mutableListOf<OTPMigrationPayload.Account>()
+        while (true) {
+            val tag = reader.readTag() ?: break
+            if (tag.field == 1 && tag.wire == 2) {
+                reader.readBytes()?.let { accounts += decodeParameters(it) }
+            } else {
+                reader.skip(tag.wire)
+            }
+        }
+        return accounts
+    }
+
+    private fun decodeParameters(data: ByteArray): OTPMigrationPayload.Account {
+        val reader = ProtoReader(data)
+        var name: String? = null
+        var issuer: String? = null
+        var type = "OTP"
+        while (true) {
+            val tag = reader.readTag() ?: break
+            when {
+                tag.field == 2 && tag.wire == 2 -> name = reader.readString()
+                tag.field == 3 && tag.wire == 2 -> issuer = reader.readString()
+                tag.field == 6 && tag.wire == 0 -> type = when (reader.readVarint()) {
+                    1L -> "HOTP"
+                    2L -> "TOTP"
+                    else -> "OTP"
+                }
+                else -> reader.skip(tag.wire)
+            }
+        }
+        return OTPMigrationPayload.Account(issuer, name, type)
+    }
+}
+
+/** Minimal protobuf wire-format reader for the Google-Authenticator
+ *  `MigrationPayload` message. Mirrors the iOS `ProtoReader`. */
+private class ProtoReader(private val bytes: ByteArray) {
+    private var i = 0
+    private val atEnd get() = i >= bytes.size
+
+    data class Tag(val field: Int, val wire: Int)
+
+    fun readVarint(): Long {
+        var result = 0L
+        var shift = 0
+        while (i < bytes.size) {
+            val b = bytes[i].toInt() and 0xFF
+            i++
+            result = result or ((b.toLong() and 0x7F) shl shift)
+            if (b and 0x80 == 0) break
+            shift += 7
+            if (shift >= 64) break
+        }
+        return result
+    }
+
+    fun readTag(): Tag? {
+        if (atEnd) return null
+        val key = readVarint()
+        return Tag((key ushr 3).toInt(), (key and 0x7).toInt())
+    }
+
+    fun readBytes(): ByteArray? {
+        val len = readVarint().toInt()
+        if (len < 0 || i + len > bytes.size) return null
+        val out = bytes.copyOfRange(i, i + len)
+        i += len
+        return out
+    }
+
+    fun readString(): String? = readBytes()?.toString(Charsets.UTF_8)
+
+    fun skip(wire: Int) {
+        when (wire) {
+            0 -> readVarint()
+            2 -> readBytes()
+            5 -> i += 4
+            1 -> i += 8
+            else -> i = bytes.size
+        }
+    }
+}
+
+// ---- Open Location Code (Plus Code) — 1.9 -----------------------------
+
+/** A recognised Open Location Code. We hand it to Maps verbatim rather than
+ *  decoding to lat/lon. Mirrors iOS [PlusCodePayload]. */
+data class PlusCodePayload(val code: String, val locality: String?, val raw: String) {
+    val mapsQuery: String get() = if (!locality.isNullOrEmpty()) "$code $locality" else code
+    fun labelledFields(): List<LabelledField> {
+        val rows = mutableListOf(LabelledField("Plus Code", code))
+        if (!locality.isNullOrEmpty()) rows += LabelledField("Locality", locality)
+        return rows
+    }
+}
+
+object PlusCodeParser {
+    private val regex = Regex(
+        "^([23456789CFGHJMPQRVWX]{8}\\+[23456789CFGHJMPQRVWX]{2,3})(?:\\s+(.+))?$",
+        RegexOption.IGNORE_CASE
+    )
+
+    fun parse(raw: String): PlusCodePayload? {
+        val s = raw.trim()
+        val m = regex.matchEntire(s) ?: return null
+        val code = m.groupValues[1].uppercase(Locale.ROOT)
+        val locality = m.groupValues.getOrNull(2)?.trim()?.ifEmpty { null }
+        return PlusCodePayload(code, locality, s)
+    }
+}
+
+// ---- what3words — 1.9 -------------------------------------------------
+
+/** A what3words address (`///filled.count.soap`). Mirrors iOS
+ *  [What3WordsPayload]. */
+data class What3WordsPayload(val words: String, val raw: String) {
+    val address: String get() = "///$words"
+    fun labelledFields(): List<LabelledField> = listOf(LabelledField("what3words", address))
+}
+
+object What3WordsParser {
+    fun parse(raw: String): What3WordsPayload? {
+        var s = raw.trim()
+        val lower = s.lowercase(Locale.ROOT)
+        s = when {
+            lower.startsWith("w3w://") -> s.substring("w3w://".length)
+            s.startsWith("///") -> s.substring(3)
+            else -> return null
+        }
+        s = s.split('?').first().split('#').first()
+        val parts = s.split('.')
+        if (parts.size != 3 || parts.any { it.isEmpty() || !it.all { c -> c.isLetter() } }) return null
+        return What3WordsPayload(parts.joinToString("."), raw)
     }
 }

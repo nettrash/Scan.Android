@@ -72,6 +72,61 @@ data class CryptoPayload(
         chainId?.let { rows += LabelledField("Chain ID", it) }
         return rows
     }
+
+    /**
+     * The URI to hand a wallet app via an `ACTION_VIEW` intent.
+     *
+     * For a scheme'd URI (`bitcoin:…`, `ethereum:…`, `lightning:…`) that's
+     * just [raw]. For a *bare* address (scanned without a scheme — e.g. a
+     * plain `bc1q…` or `0x…`) we synthesize the chain's BIP-21-style
+     * `scheme:address` so a wallet can still pick it up instead of the
+     * button doing nothing. When the chain has no well-established scheme
+     * to wrap a bare address in we return [raw] unchanged; the caller's
+     * "no wallet installed" fallback then takes over. Mirrors iOS
+     * `CryptoPayload.walletURL`.
+     */
+    fun walletUri(): String {
+        if (scheme.isNotEmpty()) return raw
+        val s = walletScheme(chain) ?: return raw
+        return "$s:$address"
+    }
+
+    /** App Store / Play Store search term for the "no wallet installed"
+     *  fallback. Mirrors iOS `CryptoPayload.walletSearchTerm`. */
+    fun walletSearchTerm(): String = when (chain) {
+        Chain.BITCOIN -> "bitcoin wallet"
+        Chain.ETHEREUM -> "ethereum wallet"
+        Chain.LITECOIN -> "litecoin wallet"
+        Chain.BITCOIN_CASH -> "bitcoin cash wallet"
+        Chain.DOGECOIN -> "dogecoin wallet"
+        Chain.MONERO -> "monero wallet"
+        Chain.CARDANO -> "cardano wallet"
+        Chain.SOLANA -> "solana wallet"
+        Chain.LIGHTNING, Chain.LNURL, Chain.LIGHTNING_ADDRESS -> "bitcoin lightning wallet"
+        Chain.RIPPLE -> "xrp wallet"
+        Chain.STELLAR -> "stellar wallet"
+        Chain.COSMOS -> "cosmos wallet"
+        Chain.TRON -> "tron wallet"
+        Chain.OTHER -> "crypto wallet"
+    }
+
+    private companion object {
+        /** The URI scheme to wrap a bare address in, for chains with a
+         *  well-established `scheme:address` payment URI. Chains without
+         *  one return null so we don't open a URL a wallet won't recognise. */
+        fun walletScheme(chain: Chain): String? = when (chain) {
+            Chain.BITCOIN -> "bitcoin"
+            Chain.ETHEREUM -> "ethereum"
+            Chain.LITECOIN -> "litecoin"
+            Chain.BITCOIN_CASH -> "bitcoincash"
+            Chain.DOGECOIN -> "dogecoin"
+            Chain.MONERO -> "monero"
+            Chain.SOLANA -> "solana"
+            Chain.LIGHTNING, Chain.LNURL -> "lightning"
+            Chain.CARDANO, Chain.RIPPLE, Chain.STELLAR, Chain.COSMOS,
+            Chain.TRON, Chain.LIGHTNING_ADDRESS, Chain.OTHER -> null
+        }
+    }
 }
 
 object CryptoURIParser {
@@ -297,4 +352,118 @@ object CryptoURIParser {
 
     private fun decode(s: String): String =
         runCatching { URLDecoder.decode(s, StandardCharsets.UTF_8.name()) }.getOrDefault(s)
+}
+
+// ---- WalletConnect (1.9) ----------------------------------------------
+
+/** A parsed WalletConnect pairing URI. Mirrors iOS [WalletConnectPayload]. */
+data class WalletConnectPayload(
+    val topic: String,
+    val version: String,
+    val relayProtocol: String?,
+    val hasKey: Boolean,
+    val bridge: String?,
+    val raw: String
+) {
+    fun labelledFields(): List<LabelledField> {
+        val rows = mutableListOf(
+            LabelledField("Protocol", "WalletConnect v$version"),
+            LabelledField("Topic", topic),
+        )
+        relayProtocol?.let { rows += LabelledField("Relay", it) }
+        bridge?.let { rows += LabelledField("Bridge", it) }
+        rows += LabelledField("Pairing key", if (hasKey) "present" else "missing")
+        return rows
+    }
+}
+
+object WalletConnectParser {
+    fun parse(raw: String): WalletConnectPayload? {
+        if (!raw.lowercase(Locale.ROOT).startsWith("wc:")) return null
+        val body = raw.substring(3)
+        val qSplit = body.split('?', limit = 2)
+        val head = qSplit[0]
+        val query = if (qSplit.size > 1) qSplit[1] else ""
+        val atSplit = head.split('@', limit = 2)
+        val topic = atSplit.getOrNull(0).orEmpty()
+        val version = atSplit.getOrNull(1).orEmpty()
+        if (topic.isEmpty() || version.isEmpty()) return null
+        val params = mutableMapOf<String, String>()
+        for (pair in query.split('&')) {
+            val kv = pair.split('=', limit = 2)
+            if (kv.size != 2) continue
+            params[kv[0].lowercase(Locale.ROOT)] =
+                runCatching { URLDecoder.decode(kv[1], StandardCharsets.UTF_8.name()) }.getOrDefault(kv[1])
+        }
+        return WalletConnectPayload(
+            topic = topic,
+            version = version,
+            relayProtocol = params["relay-protocol"],
+            hasKey = params.containsKey("symkey") || params.containsKey("key"),
+            bridge = params["bridge"],
+            raw = raw
+        )
+    }
+}
+
+// ---- Nostr (1.9) ------------------------------------------------------
+
+/** A parsed Nostr entity — a `nostr:` URI or a bare NIP-19 token. */
+data class NostrPayload(
+    val entity: Entity,
+    val id: String,
+    val raw: String
+) {
+    enum class Entity(val displayName: String) {
+        PROFILE("Profile (npub)"),
+        PRIVATE_KEY("Private key (nsec)"),
+        NOTE("Note"),
+        EVENT("Event"),
+        PROFILE_POINTER("Profile pointer"),
+        ADDRESS("Address (naddr)"),
+        RELAY("Relay"),
+    }
+
+    val isPrivateKey: Boolean get() = entity == Entity.PRIVATE_KEY
+
+    fun labelledFields(): List<LabelledField> = listOf(
+        LabelledField("Type", entity.displayName),
+        LabelledField(if (entity == Entity.PRIVATE_KEY) "Secret key" else "ID", id),
+    )
+}
+
+object NostrParser {
+    // Longest prefixes first so `nprofile` isn't shadowed by `note`/`npub`.
+    private val prefixes: List<Pair<String, NostrPayload.Entity>> = listOf(
+        "nprofile" to NostrPayload.Entity.PROFILE_POINTER,
+        "nevent" to NostrPayload.Entity.EVENT,
+        "naddr" to NostrPayload.Entity.ADDRESS,
+        "nrelay" to NostrPayload.Entity.RELAY,
+        "npub" to NostrPayload.Entity.PROFILE,
+        "nsec" to NostrPayload.Entity.PRIVATE_KEY,
+        "note" to NostrPayload.Entity.NOTE,
+    )
+    private val bech32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l".toSet()
+
+    private fun classify(token: String): NostrPayload.Entity? {
+        val lower = token.lowercase(Locale.ROOT)
+        for ((prefix, kind) in prefixes) {
+            if (!lower.startsWith(prefix + "1")) continue
+            val data = lower.substring(prefix.length + 1)
+            if (data.length >= 8 && data.all { it in bech32 }) return kind
+        }
+        return null
+    }
+
+    fun parse(raw: String): NostrPayload? {
+        var token = raw.trim()
+        if (token.lowercase(Locale.ROOT).startsWith("nostr:")) {
+            token = token.substring("nostr:".length)
+        }
+        val kind = classify(token) ?: return null
+        return NostrPayload(kind, token, raw)
+    }
+
+    /** True only for a bare NIP-19 token (no scheme). */
+    fun looksLikeBare(raw: String): Boolean = classify(raw.trim()) != null
 }
