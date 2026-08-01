@@ -268,14 +268,14 @@ class Pass1Pass2PortTest {
     // ---- IATA Boarding Pass --------------------------------------------
 
     @Test fun parsesIATABoardingPass() {
-        val raw = "M1NETTRASH/IVAN       EABC123 LHRJFKBA  0175020M013D0028 100"
+        val raw = "M1NETTRASH/TEST       EABC123 LHRJFKBA  0175020M013D0028 100"
         assertThat(raw.length).isEqualTo(60)
         val p = ScanPayloadParser.parse(raw)
         assertThat(p).isInstanceOf(ScanPayload.BoardingPass::class.java)
         val bp = (p as ScanPayload.BoardingPass).payload
         assertThat(bp.formatCode).isEqualTo('M')
         assertThat(bp.numberOfLegs).isEqualTo(1)
-        assertThat(bp.passengerName).isEqualTo("NETTRASH/IVAN")
+        assertThat(bp.passengerName).isEqualTo("NETTRASH/TEST")
         assertThat(bp.electronicTicket).isTrue()
         assertThat(bp.legs).hasSize(1)
         val leg = bp.legs[0]
@@ -287,7 +287,7 @@ class Pass1Pass2PortTest {
     }
 
     @Test fun rejectsNonBoardingPassPayload() {
-        val raw = "X1NETTRASH/IVAN       EABC123 LHRJFKBA  0175020M013D0028 100"
+        val raw = "X1NETTRASH/TEST       EABC123 LHRJFKBA  0175020M013D0028 100"
         val p = ScanPayloadParser.parse(raw)
         assertThat(p).isNotInstanceOf(ScanPayload.BoardingPass::class.java)
     }
