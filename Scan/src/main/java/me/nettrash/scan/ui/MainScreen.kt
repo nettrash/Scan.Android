@@ -2,6 +2,7 @@ package me.nettrash.scan.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import me.nettrash.scan.ui.chess.ChessScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -41,7 +43,12 @@ import me.nettrash.scan.ui.whatsnew.WhatsNewSheet
 @Composable
 fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     val navController = rememberNavController()
-    val items = listOf(BottomTab.Scan, BottomTab.Generate, BottomTab.History, BottomTab.Settings)
+    // Five tabs. Material's NavigationBar handles up to five comfortably;
+    // beyond that it wants an overflow, so Chess sits alongside the rest.
+    val items = listOf(
+        BottomTab.Scan, BottomTab.Generate, BottomTab.Chess,
+        BottomTab.History, BottomTab.Settings,
+    )
 
     val pendingDeepLink by viewModel.pendingDeepLink.collectAsState()
     val shareIntakeState by viewModel.shareIntakeState.collectAsState()
@@ -104,6 +111,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
         ) {
             composable(BottomTab.Scan.route)     { ScannerScreen() }
             composable(BottomTab.Generate.route) { GeneratorScreen() }
+            composable(BottomTab.Chess.route)    { ChessScreen() }
             composable(BottomTab.History.route)  { HistoryScreen() }
             composable(BottomTab.Settings.route) { SettingsScreen() }
         }
@@ -144,6 +152,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
 private sealed class BottomTab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     data object Scan : BottomTab("scan", "Scan", Icons.Filled.QrCodeScanner)
     data object Generate : BottomTab("generate", "Generate", Icons.Filled.QrCode)
+    data object Chess : BottomTab("chess", "Chess", Icons.Filled.GridOn)
     data object History : BottomTab("history", "History", Icons.Filled.History)
     data object Settings : BottomTab("settings", "Settings", Icons.Filled.Settings)
 }

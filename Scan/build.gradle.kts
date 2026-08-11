@@ -142,6 +142,27 @@ android {
             // Robolectric needs Android resources + the system AndroidManifest.
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
+
+            // Forward `-PdeepPerft=1` into the test JVM.
+            //
+            // The chess engine's deepest perft counts (startpos depth 6 at
+            // 119M nodes, Kiwipete depth 5 at 194M) take minutes, so they
+            // are opt-in — but a Gradle property lands on the *daemon*,
+            // not on the forked test JVM, so it has to be handed across
+            // explicitly or the gate can never be opened from the command
+            // line:
+            //
+            //     ./gradlew :Scan:testDebugUnitTest -PdeepPerft=1 \
+            //         --tests 'me.nettrash.scan.chess.*'
+            //
+            // Run that before shipping any change to move generation; the
+            // counts must match Scan/Tools/run-perft.sh on the iOS side.
+            all { test ->
+                test.systemProperty(
+                    "deepPerft",
+                    project.findProperty("deepPerft")?.toString() ?: "0",
+                )
+            }
         }
     }
     packaging {
