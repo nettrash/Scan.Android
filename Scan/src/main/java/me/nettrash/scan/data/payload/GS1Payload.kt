@@ -197,6 +197,21 @@ object GS1Parser {
         var s = if (raw.firstOrNull() == FNC1) raw.substring(1) else raw
         val elements = mutableListOf<GS1Payload.Element>()
         while (s.isNotEmpty()) {
+            // A separator may follow *any* element, not only a
+            // variable-length one: the standard permits it and real
+            // encoders emit one after fixed-length AIs too.
+            //
+            // Skipping it here is what stops it being read as part of the
+            // next AI. `resolveVariablePrefix` falls back to "assume two
+            // digits" for anything it does not recognise, so a leftover
+            // separator produced the AI `<GS>1` and consumed the real
+            // element's first digit — turning a parse error into silent
+            // data loss. In the canonical `01…<GS>10…<GS>21…` payload that
+            // meant the batch/lot went missing while GTIN and serial both
+            // looked fine.
+            s = s.trimStart(FNC1)
+            if (s.isEmpty()) break
+
             val prefixLen = GS1Registry.resolveVariablePrefix(s) ?: return null
             val ai = s.substring(0, prefixLen)
             s = s.substring(prefixLen)

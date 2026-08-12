@@ -128,6 +128,45 @@ object DrivingLicenseParser {
         val terminators = setOf('\n', '\r', '', '')
         val result = LinkedHashMap<String, String>()
         val chars = raw
+
+        // Three uppercase letters starting with `D` — the shape of every
+        // element ID this parser surfaces (DCS, DAQ, DBA, …).
+        fun isElementID(at: Int): Boolean =
+            at + 2 < chars.length &&
+                chars[at] == 'D' &&
+                chars[at + 1].isLetter() && chars[at + 1].isUpperCase() &&
+                chars[at + 2].isLetter() && chars[at + 2].isUpperCase()
+
+        // A subfile's *body* opens with its two-character type welded
+        // straight onto the first element — `…ZV03190008` `DL` `DAQABC123…`
+        // — with no separator between them, because the header's offset is
+        // what is supposed to locate it.
+        //
+        // The terminator rule below therefore rejected that first element,
+        // and since it is `DAQ` on essentially every real licence, the
+        // *licence number* was the one field this parser reliably dropped.
+        // Everything after it sits at a line start and parsed fine, which
+        // is why the failure looked like a single missing field rather than
+        // a broken parse.
+        //
+        // The header's own designators (`DL00410288`) cannot be confused
+        // with this: their third character is a digit, so `isElementID`
+        // rejects them.
+        val subfileBodyStarts = HashSet<Int>()
+        for (index in 0 until chars.length - 4) {
+            val pair = chars.substring(index, index + 2)
+            val isSubfileType = pair == "DL" || pair == "ID" || pair == "EN" ||
+                (chars[index] == 'Z' && chars[index + 1].isLetter() &&
+                    chars[index + 1].isUpperCase())
+            // Either at a record boundary, or straight after the
+            // designator block — whose final character is a digit.
+            val placed = index == 0 || terminators.contains(chars[index - 1]) ||
+                chars[index - 1].isDigit()
+            if (isSubfileType && placed && isElementID(index + 2)) {
+                subfileBodyStarts.add(index + 2)
+            }
+        }
+
         var i = 0
         while (i < chars.length) {
             if (i + 3 < chars.length &&
@@ -137,7 +176,7 @@ object DrivingLicenseParser {
             ) {
                 val atStart = i == 0
                 val afterTerminator = i > 0 && terminators.contains(chars[i - 1])
-                if (!(atStart || afterTerminator)) { i++; continue }
+                if (!(atStart || afterTerminator || subfileBodyStarts.contains(i))) { i++; continue }
                 val id = chars.substring(i, i + 3)
                 var j = i + 3
                 while (j < chars.length && !terminators.contains(chars[j])) j++
