@@ -21,7 +21,7 @@ The decoded string is parsed and rendered as structured fields with per-row tap-
 | Geolocation | `geo:` |
 | Identity | vCard (3.0), MECARD |
 | Calendar | iCalendar VEVENT (line-folded, UTC / TZID / all-day dates) |
-| Authentication | `otpauth://` |
+| Authentication | `otpauth://`, FIDO cross-device passkey QR (`FIDO:/`, CTAP 2.2 hybrid transport) |
 | Retail | EAN-8 / EAN-13 / UPC-A / UPC-E / ITF-14 product codes |
 | Cryptocurrency | Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11) |
 | Bank payments | EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only — decoding needs LZMA), EMVCo Merchant QR with nested-template drilling for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS and friends, Indian UPI (`upi://pay`), Bezahlcode (German legacy `bank://` / `bezahlcode://`), Serbian NBS IPS QR (Prenesi — PR / PT / PK) |
@@ -43,6 +43,7 @@ Per payload type, dispatched via standard Android Intents so any installed handl
 - **UPI** — `ACTION_VIEW` with the `upi://` URI; the OS picks an installed UPI app — PhonePe, GPay, Paytm, BHIM…
 - **Mobile-payment apps** — `ACTION_VIEW` with the registered URI scheme.
 - **Serbian SUF receipt** — Open the official PURS verification page.
+- **Passkey (`FIDO:/`)** — decodes the hybrid-transport blob (purpose, generated time, tunnel-server count) with a phishing caution. Informational only: the QR secret is never shown, and only the system camera flow can complete the sign-in.
 - All payloads — Copy raw to the system clipboard, Share via `ACTION_SEND`.
 
 ### Generation

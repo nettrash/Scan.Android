@@ -203,4 +203,63 @@ class ScanPayloadParserTest {
         assertThat((ScanPayloadParser.parse("https://meet.google.com/abc-defg-hij") as ScanPayload.RichUrl).payload.kind)
             .isEqualTo(RichURLPayload.Kind.MEETING)
     }
+
+    // ---- Passkey / FIDO hybrid transport (1.10) ---------------------------
+
+    // digitEncode(CBOR map {0: 33-byte key, 1: 16-byte secret, 2: 2,
+    // 3: 1721400000, 4: true, 5: "ga"}) per CTAP 2.2 §11.5. Mirrors the
+    // iOS fixtures.
+    private val fidoSignInQR =
+        "FIDO:/005640586143991420254210104918118704520152650222346064982042512635050847625585230466405085311340191775070633618515609790059716415128245854177999084978946107096654083332"
+
+    // Same shape with {2: 3, 3: 1755763200, 4: false, 5: "mc", 6: true} —
+    // key 6 is a newer addition the parser must tolerate.
+    private val fidoCreateQR =
+        "FIDO:/00564058614399143025421010491811870452015265022234606498204251263505084762558523046640508531134019177507063361851560979005971641512824580023161215293926701798171307406340245"
+
+    @Test fun parsesPasskeySignInQR() {
+        val p = ScanPayloadParser.parse(fidoSignInQR)
+        assertThat(p).isInstanceOf(ScanPayload.Passkey::class.java)
+        val pk = (p as ScanPayload.Passkey).payload
+        assertThat(pk.decoded).isTrue()
+        assertThat(pk.operationHint).isEqualTo("ga")
+        assertThat(pk.purposeDescription).isEqualTo("Sign in with a passkey")
+        assertThat(pk.tunnelDomains).isEqualTo(2)
+        assertThat(pk.linkable).isEqualTo(true)
+        assertThat(pk.generatedAtEpochSeconds).isEqualTo(1_721_400_000L)
+        assertThat(p.kindLabel).isEqualTo("Passkey")
+    }
+
+    @Test fun parsesPasskeyCreateQRAndToleratesUnknownKeys() {
+        val p = ScanPayloadParser.parse(fidoCreateQR)
+        assertThat(p).isInstanceOf(ScanPayload.Passkey::class.java)
+        val pk = (p as ScanPayload.Passkey).payload
+        assertThat(pk.decoded).isTrue()
+        assertThat(pk.operationHint).isEqualTo("mc")
+        assertThat(pk.purposeDescription).isEqualTo("Create a passkey")
+        assertThat(pk.tunnelDomains).isEqualTo(3)
+        assertThat(pk.linkable).isEqualTo(false)
+    }
+
+    @Test fun passkeyPrefixIsCaseInsensitive() {
+        val p = ScanPayloadParser.parse("fido:/" + fidoSignInQR.removePrefix("FIDO:/"))
+        assertThat(p).isInstanceOf(ScanPayload.Passkey::class.java)
+        assertThat((p as ScanPayload.Passkey).payload.operationHint).isEqualTo("ga")
+    }
+
+    @Test fun undecodablePasskeyStillRecognised() {
+        // Valid digits that aren't a CBOR map (or a malformed chunk
+        // length / overflowing chunk value) → recognised, flagged undecodable.
+        for (raw in listOf("FIDO:/123", "FIDO:/1234", "FIDO:/99999999999999999")) {
+            val p = ScanPayloadParser.parse(raw)
+            assertThat(p).isInstanceOf(ScanPayload.Passkey::class.java)
+            assertThat((p as ScanPayload.Passkey).payload.decoded).isFalse()
+            assertThat(p.payload.operationHint).isNull()
+        }
+    }
+
+    @Test fun fidoPrefixWithNonDigitsFallsBackToText() {
+        assertThat(ScanPayloadParser.parse("FIDO:/hello-world"))
+            .isInstanceOf(ScanPayload.Text::class.java)
+    }
 }

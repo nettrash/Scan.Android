@@ -6,7 +6,29 @@ The short, user-facing version of these notes ships to Google Play under `Scan/s
 
 ## [Unreleased]
 
-_(nothing yet)_
+### Added
+
+- **Passkey QR (FIDO cross-device sign-in)** — recognises the `FIDO:/`
+  hybrid-transport codes (CTAP 2.2) that websites show for the
+  phone-as-authenticator flow. Decodes the digit-encoded CBOR to show what
+  the code is for (sign in vs. create a passkey), when it was generated,
+  tunnel-server count and device-linking support, with a phishing caution.
+  The embedded one-time secret is never displayed, and the result sheet
+  explains that only the system camera flow can complete the handshake.
+  Mirrors the iOS app. (`PasskeyPayload.kt`)
+
+### Fixed
+
+- **GS1 (FNC1 form)** — a scanned GS1 barcode whose group separators sit
+  between elements (the normal `01…<GS>10…` shape) is now recognised
+  instead of falling back to plain text, and a separator after a
+  fixed-length AI no longer swallows the next element's first digit (which
+  silently dropped the batch/lot).
+- **AAMVA driving licence** — the licence number (`DAQ`, welded onto the
+  subfile type with no separator) is no longer the one field the parser
+  dropped.
+- Lint: the multi-code chip overlay no longer uses an unused
+  `BoxWithConstraints` scope (`UnusedBoxWithConstraintsScope`).
 
 ## [1.9] — 2026-06-12
 

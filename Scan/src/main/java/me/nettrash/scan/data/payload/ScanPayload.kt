@@ -52,6 +52,8 @@ sealed class ScanPayload {
     data class PlusCode(val payload: PlusCodePayload) : ScanPayload()
     data class What3Words(val payload: What3WordsPayload) : ScanPayload()
     data class Iban(val payload: IBANPayload) : ScanPayload()
+    // New in 1.10.
+    data class Passkey(val payload: PasskeyPayload) : ScanPayload()
     data class Text(val text: String) : ScanPayload()
 
     /** Short label describing the payload kind, for UI badges. */
@@ -90,6 +92,7 @@ sealed class ScanPayload {
             is PlusCode -> "Plus Code"
             is What3Words -> "what3words"
             is Iban -> "IBAN"
+            is Passkey -> "Passkey"
             is Text -> "Text"
         }
 }
@@ -131,6 +134,12 @@ object ScanPayloadParser {
         // AAMVA driver's licence.
         if (DrivingLicenseParser.looksLikeAAMVA(trimmed)) {
             DrivingLicenseParser.parse(trimmed)?.let { return ScanPayload.DrivingLicense(it) }
+        }
+        // FIDO cross-device passkey QR (CTAP 2.2 hybrid transport) —
+        // "FIDO:/" + digit-encoded CBOR. Shown by websites for the
+        // phone-as-authenticator flow.
+        if (PasskeyParser.looksLikePasskey(trimmed)) {
+            PasskeyParser.parse(trimmed)?.let { return ScanPayload.Passkey(it) }
         }
 
         // EPC SEPA Payment QR — line 1 is "BCD".

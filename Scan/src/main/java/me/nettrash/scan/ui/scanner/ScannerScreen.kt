@@ -16,7 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -463,7 +462,7 @@ fun ScannerScreen(viewModel: ScannerViewModel = hiltViewModel()) {
             // One numbered chip per code, positioned over its rect.
             // Chips clickable; tapping commits to that code through
             // the ViewModel.
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 val density = LocalDensity.current
                 state.multiCodeChoices.forEachIndexed { idx, code ->
                     val rect = code.previewRect

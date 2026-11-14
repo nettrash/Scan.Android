@@ -404,6 +404,21 @@ private fun SmartActions(
             )
         }
 
+        is ScanPayload.Passkey -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            // Same phishing shape as digital-identity flows: approving a
+            // code somebody sent you can hand *them* a session as you.
+            Text(
+                "Only use a passkey code you initiated yourself — approving someone else's can sign them in to your account.",
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+            Text(
+                "Cross-device sign-in QR. Only the system camera flow can complete the handshake (on Android, the camera / Google Lens with Google Password Manager) — Scan can't sign in with it. The one-time secret inside is never displayed, and the code expires shortly after it's shown.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+
         is ScanPayload.GS1 -> {
             LabelledFieldsList(payload.payload.labelledFields())
             payload.payload.gtin?.let { gtin ->
