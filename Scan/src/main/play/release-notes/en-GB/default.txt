@@ -1,5 +1,5 @@
-Scan 1.9 — more codes, smarter "Open in…".
+Scan 1.10 — passkey QR codes, sharper parsing.
 
-• Open in Wallet / torrent client / Swish / Vipps / Bezahlcode no longer does nothing when the app isn't installed — you get a "Find on Play Store" or "Copy link" prompt.
-• Open in UPI app lets you pick the app instead of jumping to WhatsApp.
-• New formats: WalletConnect, Nostr, Plus Codes, what3words, IBAN, 2FA exports, and PayPal/Cash App/Alipay/WeChat handles.
+• Recognises passkey sign-in QR codes (FIDO cross-device): shows whether it's for signing in or creating a passkey and when it was made, with a phishing warning. The secret inside is never shown.
+• GS1 barcodes with group separators are now read properly, and the batch/lot is no longer dropped.
+• Driving-licence barcodes (AAMVA) now show the licence number.

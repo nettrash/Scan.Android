@@ -6,6 +6,15 @@ The short, user-facing version of these notes ships to Google Play under `Scan/s
 
 ## [Unreleased]
 
+_(nothing yet)_
+
+## [1.10] — 2026-11-14
+
+Passkey QR recognition, plus GS1 and driving-licence parser fixes. Mirrors the
+iOS 1.10 work. `versionName` default in `Scan/build.gradle.kts` bumped from
+`1.9` to `1.10`; `versionCode` continues to auto-increment from
+`version.properties`.
+
 ### Added
 
 - **Passkey QR (FIDO cross-device sign-in)** — recognises the `FIDO:/`
