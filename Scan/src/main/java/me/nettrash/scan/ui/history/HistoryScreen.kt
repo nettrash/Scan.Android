@@ -18,9 +18,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.IosShare
@@ -35,6 +38,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -264,11 +268,18 @@ internal fun iconForPayload(payload: ScanPayload): ImageVector = when (payload) 
     is ScanPayload.GS1 -> Icons.Filled.Numbers
     is ScanPayload.BoardingPass -> Icons.Filled.CalendarToday
     is ScanPayload.DrivingLicense -> Icons.Filled.Person
+    // New in 1.10: the identity / invoice / passport kinds, matched to the
+    // iOS symbols (person.text.rectangle, badge.checkmark, doc.text, leaf).
+    is ScanPayload.MobileDrivingLicense -> Icons.Filled.Badge
+    is ScanPayload.VerifiableCredential -> Icons.Filled.VerifiedUser
+    is ScanPayload.EInvoice -> Icons.Filled.Description
+    is ScanPayload.DigitalProductPassport -> Icons.Filled.Eco
     is ScanPayload.WalletConnect -> Icons.Filled.CreditCard
     is ScanPayload.Nostr -> Icons.Filled.Person
     is ScanPayload.OtpMigration -> Icons.Filled.Key
     is ScanPayload.PlusCode -> Icons.Filled.Map
     is ScanPayload.What3Words -> Icons.Filled.Map
     is ScanPayload.Iban -> Icons.Filled.CreditCard
+    is ScanPayload.Passkey -> Icons.Filled.Key
     is ScanPayload.Text -> Icons.Filled.QrCode
 }

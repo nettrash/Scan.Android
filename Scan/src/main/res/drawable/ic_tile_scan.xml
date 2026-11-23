@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Quick Settings tile icon (me.nettrash.scan.tile.ScanTileService): a QR
+    code inside a viewfinder's corner brackets. The tile guide asks for a
+    24 dp vector in solid white on a transparent background — SystemUI tints
+    the icon (SRC_IN) to the tile's state, so only the shape survives, and
+    the opaque adaptive launcher icon used to come out as a featureless
+    filled blob.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Viewfinder corner brackets. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,3h6v2H5v4H3z M15,3h6v6h-2V5h-4z M3,15h2v4h4v2H3z M19,15h2v6h-6v-2h4z" />
+
+    <!-- The code: three finder squares and a corner of data modules. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,7h4v4H7z M13,7h4v4h-4z M7,13h4v4H7z M13,13h2v2h-2z M15,15h2v2h-2z" />
+</vector>

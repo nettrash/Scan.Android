@@ -2,7 +2,7 @@ package me.nettrash.scan.ui.generator
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -51,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,17 +62,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.nettrash.scan.data.payload.ComposeResult
+import me.nettrash.scan.data.payload.ScanAssistant
 import me.nettrash.scan.data.CodeSvg
 import me.nettrash.scan.generator.CodeComposer
 import me.nettrash.scan.generator.CodeGenerator
 import me.nettrash.scan.generator.GeneratableSymbology
+import me.nettrash.scan.generator.PreviewFailure
 import me.nettrash.scan.generator.QRErrorCorrection
+import me.nettrash.scan.generator.QRGeometry
+import me.nettrash.scan.generator.QREyeShape
+import me.nettrash.scan.generator.QRModuleShape
+import me.nettrash.scan.generator.QRStyledRenderer
+import me.nettrash.scan.generator.QRStyle
+import me.nettrash.scan.nfc.NfcWriteAction
+import me.nettrash.scan.ui.components.LocalScanSettings
 import me.nettrash.scan.ui.components.ColorPickerRow
 import me.nettrash.scan.ui.components.copyToClipboard
 import me.nettrash.scan.ui.components.saveBitmapToPictures
 import me.nettrash.scan.ui.components.shareImage
+import me.nettrash.scan.util.Haptics
 
 private enum class InputKind(val label: String) {
     TEXT("Text"), URL("URL"), CONTACT("Contact"), WIFI("Wi-Fi")
@@ -104,6 +122,14 @@ fun GeneratorScreen() {
     var logoUri by remember { mutableStateOf<Uri?>(null) }
     var logoBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
+    // QR art studio. Shapes and the optional second ink; colours and error
+    // correction keep their existing state above.
+    var moduleShape by remember { mutableStateOf(QRModuleShape.SQUARE) }
+    var eyeShape by remember { mutableStateOf(QREyeShape.SQUARE) }
+    var usesSecondInk by remember { mutableStateOf(false) }
+    var secondInk by remember { mutableStateOf(Color.Blue) }
+    var presetID by remember { mutableStateOf("classic") }
+
     var symbologyMenuExpanded by remember { mutableStateOf(false) }
     var securityMenuExpanded by remember { mutableStateOf(false) }
     var ecMenuExpanded by remember { mutableStateOf(false) }
@@ -115,15 +141,23 @@ fun GeneratorScreen() {
         logoUri = uri
     }
 
-    // Load the logo bitmap whenever the URI changes. Kept off the
-    // main thread implicitly via LaunchedEffect — for picker-sized
-    // images this is fast enough that the user doesn't notice.
+    // Load the logo bitmap whenever the URI changes, as iOS's `preparedLogo`
+    // does: off the main thread, upright (ImageDecoder applies the EXIF
+    // orientation) and at most QRStyledRenderer.LOGO_MAX_PIXELS on its long
+    // side — a 12 MP photo would otherwise be redrawn on every preview refresh
+    // and embedded whole in the PDF. Software pixels, because the studio draws
+    // the logo onto bitmap and PDF canvases, which reject hardware bitmaps.
     LaunchedEffect(logoUri) {
         val uri = logoUri
-        logoBitmap = if (uri == null) null else {
+        logoBitmap = if (uri == null) null else withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.openInputStream(uri).use { stream ->
-                    BitmapFactory.decodeStream(stream)
+                val source = ImageDecoder.createSource(context.contentResolver, uri)
+                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    val (width, height) = QRStyledRenderer.preparedLogoSize(info.size.width, info.size.height)
+                    if (width != info.size.width || height != info.size.height) {
+                        decoder.setTargetSize(width, height)
+                    }
                 }
             }.getOrNull()
         }
@@ -157,8 +191,65 @@ fun GeneratorScreen() {
     }
 
     val effectiveLogo = if (symbology.supportsLogo) logoBitmap else null
-    val bitmap: Bitmap? = remember(encoded, symbology, foregroundColor, backgroundColor, qrErrorCorrection, effectiveLogo) {
+
+    // MARK: - Style
+
+    val isQR = symbology == GeneratableSymbology.QR
+
+    /** The style the preview and every export use: shapes from the studio
+     *  rows, colours and the logo from the existing pickers. Mirrors iOS's
+     *  `activeStyle`. */
+    val activeStyle = remember(
+        isQR,
+        moduleShape,
+        eyeShape,
+        foregroundColor,
+        backgroundColor,
+        usesSecondInk,
+        secondInk,
+        effectiveLogo,
+    ) {
+        QRStyle(
+            moduleShape = if (isQR) moduleShape else QRModuleShape.SQUARE,
+            eyeShape = if (isQR) eyeShape else QREyeShape.SQUARE,
+            inks = buildList {
+                add(foregroundColor.toArgb())
+                if (usesSecondInk && isQR) add(secondInk.toArgb())
+            },
+            backgroundArgb = backgroundColor.toArgb(),
+            quietZone = 4,
+            logo = effectiveLogo,
+        )
+    }
+
+    /** Error correction the style demands. Rounded modules, ring eyes and
+     *  inset artwork cost module contrast, so they buy back redundancy
+     *  automatically; the user's pick is raised, never lowered. */
+    val effectiveErrorCorrection =
+        CodeGenerator.effectiveErrorCorrection(qrErrorCorrection, activeStyle)
+
+    /** Only a non-default style routes through the studio renderer, so the
+     *  default generator output and exports stay exactly what they are
+     *  today. */
+    val isStyled = isQR && !activeStyle.isPlain
+
+    val bitmap: Bitmap? = remember(
+        encoded,
+        symbology,
+        foregroundColor,
+        backgroundColor,
+        qrErrorCorrection,
+        effectiveLogo,
+        isStyled,
+        activeStyle,
+    ) {
         if (encoded.isEmpty()) null
+        else if (isStyled) CodeGenerator.styledBitmap(
+            content = encoded,
+            style = activeStyle,
+            moduleSize = 12,
+            errorCorrection = qrErrorCorrection,
+        )
         else CodeGenerator.bitmap(
             content = encoded,
             symbology = symbology,
@@ -170,8 +261,48 @@ fun GeneratorScreen() {
         )
     }
 
-    val contrast = remember(foregroundColor, backgroundColor) {
-        CodeGenerator.contrastRatio(foregroundColor.toArgb(), backgroundColor.toArgb())
+    /** Modules per side of the styled QR, for the density warning; null for
+     *  the plain path (iOS `PreviewResult.code`'s `styledSide`). */
+    val styledSide: Int? = remember(encoded, isStyled, activeStyle, qrErrorCorrection) {
+        if (!isStyled || encoded.isEmpty()) null
+        else CodeGenerator.styledMatrix(encoded, activeStyle, qrErrorCorrection)
+            ?.let { QRGeometry.symbolArea(it)?.width?.toInt() }
+    }
+
+    /** WCAG contrast of the palest ink against the background. With a
+     *  gradient every ink is measured and the worst is reported — a wash is
+     *  only as legible as its palest end (iOS `contrastRatio`). */
+    val contrast = remember(activeStyle) {
+        activeStyle.inks.minOfOrNull { CodeGenerator.contrastRatio(it, activeStyle.backgroundArgb) } ?: 21.0
+    }
+
+    /** The "describe the code" box's result, copied onto the form. */
+    fun applyComposed(fill: ComposeFormFill) {
+        when (fill) {
+            is ComposeFormFill.Text -> {
+                inputKind = InputKind.TEXT
+                textInput = fill.text
+            }
+            is ComposeFormFill.Url -> {
+                inputKind = InputKind.URL
+                urlInput = fill.url
+            }
+            is ComposeFormFill.Wifi -> {
+                inputKind = InputKind.WIFI
+                wifiSSID = fill.ssid
+                wifiPassword = fill.password
+                fill.security?.let { wifiSecurity = it }
+                wifiHidden = fill.hidden
+            }
+            is ComposeFormFill.Contact -> {
+                inputKind = InputKind.CONTACT
+                contactName = fill.name
+                contactPhone = fill.phone
+                contactEmail = fill.email
+                contactOrg = fill.organization
+                contactURL = ""
+            }
+        }
     }
 
     Column(
@@ -182,6 +313,13 @@ fun GeneratorScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Generate", style = MaterialTheme.typography.headlineSmall)
+
+        // "Describe the code" — a sentence in, a filled-in form out (iOS
+        // `AssistantComposeBox`). Hidden when the assistant is switched off
+        // in Settings → Insights.
+        if (LocalScanSettings.current.assistantEnabled) {
+            DescribeTheCodeBox(onResult = ::applyComposed)
+        }
 
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             InputKind.values().forEachIndexed { idx, k ->
@@ -335,7 +473,87 @@ fun GeneratorScreen() {
                     }
                 }
             }
+
+            // Say so when the studio overrode the user's choice.
+            if (effectiveErrorCorrection != qrErrorCorrection) {
+                Text(
+                    "Shapes and artwork raise error correction to " +
+                        "${effectiveErrorCorrection.displayName} automatically \u2014 that " +
+                        "redundancy is what pays for them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+
+            // QR art studio: presets, shapes, and the second ink.
+            StyleDropdown(
+                label = "Preset",
+                options = QRStyle.presets.map { it.name },
+                selected = QRStyle.presets.indexOfFirst { it.id == presetID }.coerceAtLeast(0),
+                onSelect = { index -> presetID = QRStyle.presets[index].id },
+            )
+            StyleDropdown(
+                label = "Modules",
+                options = QRModuleShape.values().map { it.label },
+                selected = moduleShape.ordinal,
+                onSelect = { index -> moduleShape = QRModuleShape.values()[index] },
+            )
+            StyleDropdown(
+                label = "Eyes",
+                options = QREyeShape.values().map { it.label },
+                selected = eyeShape.ordinal,
+                onSelect = { index -> eyeShape = QREyeShape.values()[index] },
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = usesSecondInk, onCheckedChange = { usesSecondInk = it })
+                Spacer(Modifier.width(8.dp))
+                Text("Gradient ink")
+            }
+            if (usesSecondInk) {
+                ColorPickerRow("Second ink", secondInk, onColorChange = { secondInk = it })
+            }
+
+            QRStyle.preset(presetID)?.let { preset ->
+                OutlinedButton(onClick = {
+                    moduleShape = preset.style.moduleShape
+                    eyeShape = preset.style.eyeShape
+                    usesSecondInk = preset.style.inks.size > 1
+                    preset.style.inks.firstOrNull()?.let { foregroundColor = Color(it) }
+                    if (preset.style.inks.size > 1) {
+                        preset.style.inks.lastOrNull()?.let { secondInk = Color(it) }
+                    }
+                    backgroundColor = Color(preset.style.backgroundArgb)
+                    Haptics.success(context)
+                }) { Text("Apply \u201c${preset.name}\u201d") }
+            }
         }
+
+        // Reset + the studio's scannability footnote (iOS's Style footer).
+        TextButton(onClick = {
+            foregroundColor = Color.Black
+            backgroundColor = Color.White
+            moduleShape = QRModuleShape.SQUARE
+            eyeShape = QREyeShape.SQUARE
+            usesSecondInk = false
+            presetID = "classic"
+        }) { Text("Reset to black on white") }
+        Text(
+            if (symbology == GeneratableSymbology.QR) {
+                "Shapes and artwork raise error correction to High automatically \u2014 " +
+                    "that redundancy is what pays for them. Aim for a contrast ratio of at " +
+                    "least 3:1 for every ink."
+            } else {
+                "Colour customisation works on every supported symbology. Aim for a " +
+                    "contrast ratio of at least 3:1."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+        )
+
+        // NFC: write what the form encodes onto a writable tag (iOS
+        // `nfcSection`). Renders nothing on a phone without NFC.
+        NfcWriteAction(value = encoded)
 
         // Logo block (QR only)
         if (symbology.supportsLogo) {
@@ -383,6 +601,12 @@ fun GeneratorScreen() {
                     TextButton(onClick = { logoUri = null }) { Text("Remove") }
                 }
             }
+            Text(
+                "Logos sit at about 22% of the code's width on a patch of the background " +
+                    "colour \u2014 well within what High error correction can recover.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            )
         }
 
         // Contrast warning — same threshold as iOS.
@@ -394,8 +618,31 @@ fun GeneratorScreen() {
                     tint = MaterialTheme.colorScheme.tertiary,
                 )
                 Spacer(Modifier.width(8.dp))
+                // Locale.US: a decimal point in every locale, as iOS's
+                // unlocalised String(format:) prints it.
                 Text(
-                    "Contrast ${"%.1f".format(contrast)}:1 is below the safe threshold (3:1). Some scanners will struggle.",
+                    "Contrast ${String.format(java.util.Locale.US, "%.1f", contrast)}:1 is below the safe threshold (3:1). Some scanners will struggle.",
+                    color = MaterialTheme.colorScheme.tertiary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        // Shaped modules run out of margin on dense codes — dots soonest, all of
+        // them sooner with a logo (`QRStyle.isHardToScan`): say so rather than
+        // let the user print a code their own camera may not read. Same wording
+        // as iOS.
+        val densityWarning = styledSide?.let { activeStyle.scannabilityWarning(it) }
+        if (densityWarning != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    densityWarning,
                     color = MaterialTheme.colorScheme.tertiary,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -445,6 +692,7 @@ fun GeneratorScreen() {
                                 bg = backgroundColor.toArgb(),
                                 errorCorrection = qrErrorCorrection,
                                 hasLogo = effectiveLogo != null,
+                                style = activeStyle.takeIf { isStyled },
                             )
                         }) {
                             Icon(Icons.Filled.Share, contentDescription = null)
@@ -458,6 +706,7 @@ fun GeneratorScreen() {
                                 bg = backgroundColor.toArgb(),
                                 errorCorrection = qrErrorCorrection,
                                 hasLogo = effectiveLogo != null,
+                                style = activeStyle.takeIf { isStyled },
                             )
                         }) {
                             Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
@@ -467,7 +716,125 @@ fun GeneratorScreen() {
                 }
             }
         } else {
-            Text("Fill in the fields above to see a preview.")
+            // Say why instead of asking for fields that are already filled in
+            // (iOS `PreviewFailure`); only a failed preview pays to find out.
+            val failure = remember(encoded, symbology, activeStyle, qrErrorCorrection) {
+                PreviewFailure.reason(encoded, symbology, activeStyle, qrErrorCorrection)
+            }
+            Text(failure.message)
+        }
+    }
+}
+
+// MARK: - Describe the code
+
+/**
+ * The Generate tab's "describe the code" box: a sentence in, a filled-in form
+ * out — the port of iOS `AssistantComposeBox`. [ScanAssistant.compose] runs on
+ * the device (the rule-based engine today; an on-device model if one is ever
+ * registered), so nothing typed here is sent anywhere. Applying the result is
+ * the caller's job ([ComposeFormFill]); the user still sees and checks every
+ * field before sharing the code.
+ */
+@Composable
+private fun DescribeTheCodeBox(onResult: (ComposeFormFill) -> Unit) {
+    var request by remember { mutableStateOf("") }
+    var working by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val trimmed = request.trim()
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Describe the code", style = MaterialTheme.typography.titleSmall)
+        OutlinedTextField(
+            value = request,
+            onValueChange = { request = it },
+            placeholder = { Text("Wi-Fi for network BlueHouse, password hunter2") },
+            maxLines = 3,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedButton(
+            onClick = {
+                working = true
+                scope.launch {
+                    val result: ComposeResult? = ScanAssistant.compose(trimmed)
+                    val fill = result?.let(ComposeFormFill::from)
+                    note = when {
+                        result == null || fill == null ->
+                            "Scan couldn't tell what to build from that. Start with the kind of " +
+                                "code: \u201Cwifi \u2026\u201D, \u201Ccontact for \u2026\u201D, a link, or \u201Ctext \u2026\u201D."
+                        result.source == ComposeResult.ComposeSource.ON_DEVICE_MODEL ->
+                            "Filled in by the on-device model."
+                        else -> "Filled in by the built-in assistant."
+                    }
+                    if (fill != null) onResult(fill)
+                    working = false
+                }
+            },
+            enabled = !working && trimmed.isNotEmpty(),
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (working) "Filling in the form\u2026" else "Fill in the form")
+        }
+        note?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+        }
+        Text(
+            "Understood on this device \u2014 nothing you type is sent anywhere. Check the " +
+                "filled-in fields before you share the code.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+        )
+    }
+}
+
+// MARK: - Studio dropdown
+
+/** Menu-anchor dropdown for the studio rows. Same affordance as the
+ *  error-correction control above, factored out so Preset / Modules / Eyes
+ *  don't each repeat the boilerplate. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StyleDropdown(
+    label: String,
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = options.getOrElse(selected) { "" },
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEachIndexed { index, option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = { onSelect(index); expanded = false }
+                )
+            }
         }
     }
 }
@@ -485,14 +852,19 @@ private fun shareSvg(
     bg: Int,
     errorCorrection: QRErrorCorrection,
     hasLogo: Boolean,
+    style: QRStyle?,
 ) {
-    val ec = if (hasLogo) QRErrorCorrection.HIGH else errorCorrection
+    // Same encoding as the preview: a style raises the level it demands, a
+    // logo forces HIGH, and neither is the caller's problem.
+    val raised = style?.let { CodeGenerator.effectiveErrorCorrection(errorCorrection, it) }
+        ?: errorCorrection
+    val ec = if (hasLogo) QRErrorCorrection.HIGH else raised
     val matrix = CodeGenerator.matrix(
         content = content,
         symbology = GeneratableSymbology.QR,
         errorCorrection = ec,
     ) ?: return
-    val svg = CodeSvg.svg(matrix, fgArgb = fg, bgArgb = bg)
+    val svg = CodeSvg.svg(matrix, fgArgb = fg, bgArgb = bg, style = style)
     val uri = CodeSvg.writeSvgUri(context, svg)
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "image/svg+xml"
@@ -513,14 +885,17 @@ private fun sharePdf(
     bg: Int,
     errorCorrection: QRErrorCorrection,
     hasLogo: Boolean,
+    style: QRStyle?,
 ) {
-    val ec = if (hasLogo) QRErrorCorrection.HIGH else errorCorrection
+    val raised = style?.let { CodeGenerator.effectiveErrorCorrection(errorCorrection, it) }
+        ?: errorCorrection
+    val ec = if (hasLogo) QRErrorCorrection.HIGH else raised
     val matrix = CodeGenerator.matrix(
         content = content,
         symbology = GeneratableSymbology.QR,
         errorCorrection = ec,
     ) ?: return
-    val uri = CodeSvg.writePdfUri(context, matrix, fgArgb = fg, bgArgb = bg)
+    val uri = CodeSvg.writePdfUri(context, matrix, fgArgb = fg, bgArgb = bg, style = style)
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "application/pdf"
         putExtra(Intent.EXTRA_STREAM, uri)

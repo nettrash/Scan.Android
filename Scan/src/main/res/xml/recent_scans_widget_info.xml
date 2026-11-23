@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Home-screen widget descriptor for
+    me.nettrash.scan.widget.RecentScansWidgetReceiver, which renders
+    me.nettrash.scan.widget.RecentScansWidget (Glance).
+
+    initialLayout / previewLayout are Glance's own loading layout from
+    androidx.glance:glance-appwidget — the real UI is composed in Kotlin, so
+    this only covers the frame shown while Glance renders.
+
+    `updatePeriodMillis` is clamped by the platform to a 30-minute floor,
+    which is why the widget carries its own refresh affordance
+    (RecentScansRefreshCallback) — a scan saved a second ago would otherwise
+    wait for the next system tick.
+
+    `previewLayout` / `targetCellWidth` / `targetCellHeight` are API 31+
+    attributes (minSdk is 28): older launchers ignore them and use the
+    minWidth / minHeight sizing and the live layout as the preview, which is
+    the intended fallback. `tools:targetApi="31"` records that, so lint's
+    UnusedAttribute check doesn't flag the three on purpose.
+
+    Label and description are string resources (res/values/
+    strings_platform_hooks.xml): the attributes are `format="reference"`, so
+    a literal here would fail AAPT.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:description="@string/widget_recent_scans_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:label="@string/widget_recent_scans_label"
+    android:minHeight="110dp"
+    android:minResizeHeight="60dp"
+    android:minResizeWidth="180dp"
+    android:minWidth="250dp"
+    android:previewLayout="@layout/glance_default_loading_layout"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="3"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    tools:targetApi="31" />

@@ -12,22 +12,28 @@ import me.nettrash.scan.data.settings.SettingsRepository
 import me.nettrash.scan.data.settings.SettingsState
 import me.nettrash.scan.ui.deeplink.DeepLinkDispatcher
 import me.nettrash.scan.ui.share.ShareIntakeDispatcher
+import me.nettrash.scan.widget.ScanEntry
+import me.nettrash.scan.widget.ScanEntryDispatcher
 import javax.inject.Inject
 
 /**
- * Cross-screen state owned at the bottom-nav root. Three strands:
+ * Cross-screen state owned at the bottom-nav root. Four strands:
  *
  *  - Settings flow ([SettingsRepository.state]) — drives the
  *    What's-New gate, which has to be checked *before* any tab has
- *    been mounted.
+ *    been mounted, and the `LocalScanSettings` snapshot every result
+ *    surface reads.
  *  - Pending Universal/App-Links payload from [DeepLinkDispatcher] (1.5).
  *  - Pending share-intake result from [ShareIntakeDispatcher] (1.6).
+ *  - Pending tab request from a widget / tile / shortcut launch
+ *    ([ScanEntryDispatcher], 1.10).
  */
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repo: SettingsRepository,
     private val deepLinks: DeepLinkDispatcher,
     private val shareIntake: ShareIntakeDispatcher,
+    private val quickEntry: ScanEntryDispatcher,
 ) : ViewModel() {
 
     val state: StateFlow<SettingsState> =
@@ -44,6 +50,16 @@ class MainViewModel @Inject constructor(
     /// on whole-batch failure. MainScreen presents the share result
     /// sheet whenever this is non-Idle.
     val shareIntakeState: StateFlow<ShareIntakeDispatcher.State> = shareIntake.state
+
+    /// The tab a widget / Quick Settings tile / app shortcut asked for,
+    /// or null. MainScreen navigates and then calls
+    /// [consumePendingEntry], on cold and warm starts alike.
+    val pendingEntry: StateFlow<ScanEntry?> = quickEntry.pending
+
+    /// How many "Scan a code" launches this process has seen
+    /// ([ScanEntryDispatcher.scannerRequests]). Non-zero at the first
+    /// composition means the launch was for the camera.
+    val scannerRequests: StateFlow<Int> = quickEntry.scannerRequests
 
     /**
      * Suspend until DataStore has actually delivered the first
@@ -80,4 +96,8 @@ class MainViewModel @Inject constructor(
     fun consumeShareIntake() {
         shareIntake.consume()
     }
+
+    /// Read-and-clear the pending tab request once MainScreen has
+    /// navigated to it.
+    fun consumePendingEntry(): ScanEntry? = quickEntry.consumePending()
 }

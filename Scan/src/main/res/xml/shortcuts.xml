@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Long-press app-icon shortcuts (AndroidX static shortcuts), wired to the
+    launcher activity through the `android.app.shortcuts` meta-data in
+    AndroidManifest.xml.
+
+    The Android counterpart of `ScanAppShortcuts` in
+    `Scan/ScanIntents.swift`, narrowed to the three launches a static
+    shortcut can express (a shortcut carries an Intent, not code — so
+    Explain / Translate stay on iOS, where the intent runs in-process):
+
+      Scan a code     → StartScanningIntent  (qrcode.viewfinder)
+      Generate a code → GenerateCodeIntent   (square.qr)
+      Recent scans    → CopyRecentScanIntent (doc.on.doc)
+
+    Each fires a `me.nettrash.scan.action.*` action that
+    me.nettrash.scan.widget.ScanEntryDispatcher maps onto a bottom-nav tab.
+    The intents are explicit (targetClass), so no intent filters are needed.
+
+    They target me.nettrash.scan.widget.ShortcutTrampolineActivity, not
+    MainActivity: the system always starts a static shortcut with
+    NEW_TASK | CLEAR_TASK (no app can change that), which would finish a
+    running MainActivity and lose what lives only in memory, such as the
+    Bulk capture list. The trampoline forwards the action to MainActivity
+    with the widget's and the tile's CLEAR_TOP | SINGLE_TOP launch, so a
+    warm app receives it through onNewIntent. Icons reference framework
+    drawables so the shortcuts ship without adding private drawable
+    resources.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_camera"
+        android:shortcutId="scan_code"
+        android:shortcutLongLabel="@string/shortcut_scan_long"
+        android:shortcutShortLabel="@string/shortcut_scan_short">
+        <intent
+            android:action="me.nettrash.scan.action.SCANNER"
+            android:targetClass="me.nettrash.scan.widget.ShortcutTrampolineActivity"
+            android:targetPackage="me.nettrash.scan" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:shortcutId="generate_code"
+        android:shortcutLongLabel="@string/shortcut_generate_long"
+        android:shortcutShortLabel="@string/shortcut_generate_short">
+        <intent
+            android:action="me.nettrash.scan.action.GENERATOR"
+            android:targetClass="me.nettrash.scan.widget.ShortcutTrampolineActivity"
+            android:targetPackage="me.nettrash.scan" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_recent_history"
+        android:shortcutId="recent_scans"
+        android:shortcutLongLabel="@string/shortcut_recent_long"
+        android:shortcutShortLabel="@string/shortcut_recent_short">
+        <intent
+            android:action="me.nettrash.scan.action.RECENT_SCANS"
+            android:targetClass="me.nettrash.scan.widget.ShortcutTrampolineActivity"
+            android:targetPackage="me.nettrash.scan" />
+    </shortcut>
+
+</shortcuts>

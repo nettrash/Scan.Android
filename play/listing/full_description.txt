@@ -4,7 +4,15 @@ Point the camera at a Wi-Fi QR and you'll see the network name, security type, a
 
 PRIVATE BY DESIGN
 
-Scan does not collect, transmit, or share any data. The barcode model runs entirely on-device — camera frames are analysed in memory and never written to disk or sent over the network. The history is stored locally in the app's private database. No accounts, no telemetry, no advertising SDKs, no trackers.
+Scan never uploads what you scan. Barcodes, printed text and translations are processed on the device by Google's ML Kit — camera frames are analysed in memory and never written to disk — and the history stays in the app's private database. No accounts, no servers of ours, no advertising SDKs. (ML Kit itself sends Google diagnostic statistics, and fetches language models and settings when you translate.)
+
+SAFE, EXPLAINED SCANS
+
+• QR safety check: look-alike addresses, address-bar tricks, risky links, preset payment amounts and stuck-on codes are flagged before you act — a dangerous link offers Copy instead of Open
+• "What is this code?" explains any result in plain language, with passwords and secrets blanked out
+• Live Text and Bulk modes: read printed text and translate it, or collect a pallet of codes and export CSV
+• NFC: read a tag, or write a generated code to one
+• Digital-ID, passkey, e-invoice and product-passport codes decoded — Scan never answers an identity request
 
 LIVE SCANNING
 
@@ -54,4 +62,4 @@ HISTORY TAB
 
 Saved scans live in a local searchable list. Each entry has an editable note, the original symbology, the parsed payload type, and all the same smart actions.
 
-Free, ad-free, tracker-free.
+Free and ad-free. Home-screen widget, Quick Settings tile and launcher shortcuts included.

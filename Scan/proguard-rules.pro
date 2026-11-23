@@ -21,3 +21,13 @@
 -keep class com.google.android.odml.** { *; }
 -dontwarn com.google.mlkit.**
 -dontwarn com.google.android.gms.**
+
+# Glance creates ActionCallbacks reflectively (Class.forName, then
+# getDeclaredConstructor().newInstance()) when a widget action fires — the
+# Recent-scans widget's Refresh (RecentScansRefreshCallback). Glance's own
+# consumer rule keeps only the class under R8 full mode, not its no-arg
+# constructor, so without this every Refresh tap in a release build threw
+# NoSuchMethodException, swallowed as "BroadcastReceiver execution failed".
+-keepclassmembers class * implements androidx.glance.appwidget.action.ActionCallback {
+    <init>();
+}

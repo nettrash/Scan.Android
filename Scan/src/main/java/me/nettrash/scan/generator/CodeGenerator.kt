@@ -141,6 +141,60 @@ object CodeGenerator {
         }.getOrNull()
     }
 
+    // ---- Styled (QR art studio) rendering -----------------------------
+
+    /**
+     * Error correction a matrix should be generated at once [style] is
+     * applied. Mirrors iOS's `effectiveErrorCorrection`: non-square modules,
+     * ring eyes and inset artwork cost module contrast, so they buy back
+     * redundancy automatically — the user's pick is raised, never lowered.
+     */
+    fun effectiveErrorCorrection(
+        requested: QRErrorCorrection,
+        style: QRStyle,
+    ): QRErrorCorrection = if (requested != QRErrorCorrection.HIGH &&
+        style.minimumErrorCorrection == QRErrorCorrection.HIGH
+    ) {
+        QRErrorCorrection.HIGH
+    } else {
+        requested
+    }
+
+    /**
+     * The matrix the styled renderer draws, at the error correction [style]
+     * demands. Exposed so the vector exports encode exactly once and cannot
+     * drift from the preview.
+     */
+    fun styledMatrix(
+        content: String,
+        style: QRStyle,
+        errorCorrection: QRErrorCorrection = QRErrorCorrection.MEDIUM,
+    ): BitMatrix? = matrix(
+        content = content,
+        symbology = GeneratableSymbology.QR,
+        errorCorrection = effectiveErrorCorrection(errorCorrection, style),
+        logo = style.logo,
+    )
+
+    /**
+     * Render [content] as a styled QR bitmap — module shapes, eye shapes,
+     * gradient inks, trimmed quiet zone. Only the QR symbology has a studio;
+     * everything else keeps using [bitmap].
+     *
+     * The unstyled path is deliberately untouched: callers should only come
+     * here when a non-default [QRStyle] is active (`!style.isPlain`), so the
+     * default output stays byte-for-byte what [bitmap] produces today.
+     */
+    fun styledBitmap(
+        content: String,
+        style: QRStyle,
+        moduleSize: Int = QRStyledRenderer.DEFAULT_MODULE_SIZE,
+        errorCorrection: QRErrorCorrection = QRErrorCorrection.MEDIUM,
+    ): Bitmap? {
+        val matrix = styledMatrix(content, style, errorCorrection) ?: return null
+        return QRStyledRenderer.bitmap(matrix, style, moduleSize)
+    }
+
     /**
      * Compute the WCAG relative-luminance contrast ratio between two
      * colours. Mirrors iOS's helper exactly. UI uses this to surface
@@ -216,5 +270,60 @@ object CodeGenerator {
         canvas.drawBitmap(logo, src, logoRect, logoPaint)
 
         return out
+    }
+}
+
+/**
+ * Why the Generate tab has no code to show. Worked out only once encoding has
+ * failed, so a preview that renders costs nothing extra. iOS `PreviewFailure`
+ * makes the same decision in the same words.
+ */
+sealed interface PreviewFailure {
+
+    /** What the Preview section says instead of a code. */
+    val message: String
+
+    /** Nothing to encode yet. */
+    data object Empty : PreviewFailure {
+        override val message = "Fill in the fields above to see a preview."
+    }
+
+    /** Fits at the user's own error correction, but not at the High that shaped
+     *  modules, shaped eyes or a logo raise it to. */
+    data object TooLongForStyle : PreviewFailure {
+        override val message = "Too long for shaped modules, shaped eyes or a logo — they need High " +
+            "error correction. Use square modules and eyes without a logo, or shorten the content."
+    }
+
+    /** Code 128 carries 7-bit ASCII only; anything else fails however short. */
+    data object NotAscii : PreviewFailure {
+        override val message = "Code 128 only holds plain ASCII text — no accents, emoji or other scripts."
+    }
+
+    /** More than [symbology] holds. */
+    data class TooLong(val symbology: GeneratableSymbology) : PreviewFailure {
+        override val message: String
+            get() = "This content is too long for " +
+                "${if (symbology == GeneratableSymbology.AZTEC) "an" else "a"} ${symbology.displayName} code."
+    }
+
+    companion object {
+        /**
+         * Which limit [content] ran into. Call it only after encoding failed: it
+         * renders nothing, it only works out why.
+         */
+        fun reason(
+            content: String,
+            symbology: GeneratableSymbology,
+            style: QRStyle,
+            requested: QRErrorCorrection,
+        ): PreviewFailure = when {
+            content.isEmpty() -> Empty
+            symbology == GeneratableSymbology.QR && !style.isPlain &&
+                CodeGenerator.effectiveErrorCorrection(requested, style) != requested &&
+                CodeGenerator.matrix(content, GeneratableSymbology.QR, requested) != null -> TooLongForStyle
+            symbology == GeneratableSymbology.CODE128 && content.any { it.code > 0x7F } -> NotAscii
+            else -> TooLong(symbology)
+        }
     }
 }

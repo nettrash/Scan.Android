@@ -256,7 +256,12 @@ object RegionalPaymentParser {
                 )
             }.getOrNull()
             val str = decoded?.toString(Charsets.UTF_8)
-            val obj = str?.let { runCatching { JSONObject(it) }.getOrNull() }
+            // The nesting cap iOS applies before JSONSerialization: a blob
+            // nested deeper than PayloadCodec.MAX_JSON_DEPTH is shown raw on
+            // both phones instead of being parsed on one of them.
+            val obj = str
+                ?.takeIf { PayloadCodec.jsonNestingIsWithinLimit(it) }
+                ?.let { runCatching { JSONObject(it) }.getOrNull() }
             if (obj != null) {
                 val keys = obj.keys().asSequence().toList().sorted()
                 for (k in keys) {

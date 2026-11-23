@@ -52,7 +52,7 @@ Use this once for the **first** Play Console submission, then again — abridged
    - [ ] **Financial features** — No (the app shows financial *information* parsed from QRs, but performs no transactions).
    - [ ] **Health features** — No.
 - [ ] *Privacy policy* URL — paste `https://nettrash.me/play/scan/privacy.html` (hosted from `nettrash-me/frontend/assets/play/scan/privacy.html`).
-- [ ] *Data safety* — fill in using the answers in `play/DATA_SAFETY.md` (everything is "no data collected").
+- [ ] *Data safety* — fill in using the answers in `play/DATA_SAFETY.md` (since 1.10 it declares the diagnostics and installation IDs Google's ML Kit collects).
 
 ### Store listing
 
@@ -75,7 +75,7 @@ Use this once for the **first** Play Console submission, then again — abridged
       ./gradlew :Scan:bundleRelease
       ```
 - [ ] On Play Console → *Internal testing* → *Create new release* → upload `Scan/build/outputs/bundle/release/Scan-release.aab`.
-- [ ] *What's new* — Play Console reads it automatically from `Scan/src/main/play/release-notes/<locale>/default.txt` when uploaded via the GitHub Actions workflow. For manual uploads, paste from the `default.txt` matching your store-listing language. Update each locale **and** the `## [Unreleased]` section of `CHANGELOG.md` before tagging.
+- [ ] *What's new* — the notes live in `Scan/src/main/play/release-notes/<locale>/default.txt` (≤ 500 characters each). **Known gap:** the release workflow's `whatsNewDirectory` expects files named `whatsnew-<locale>`, so the `<locale>/default.txt` files are not picked up automatically today — paste them in Play Console (or add a copy step to `release.yml`). Update each locale **and** `CHANGELOG.md` before tagging.
 - [ ] Add yourself + a few testers (email addresses) to the internal-testing list. Save the opt-in URL it gives you.
 - [ ] Install via the opt-in URL, smoke-test on a real device:
    - [ ] Camera permission prompt appears, scan a QR.
@@ -87,6 +87,7 @@ Use this once for the **first** Play Console submission, then again — abridged
 
 ## Subsequent releases
 
+- [ ] **Re-check privacy disclosures whenever a dependency changes.** Diff `./gradlew :Scan:dependencies --configuration releaseRuntimeClasspath` and the merged manifest's permissions / components against the previous release; if anything new can reach the network or adds a permission, update `play/PRIVACY_POLICY.md`, the website copy (`nettrash-me/frontend/assets/play/scan/privacy.html`), `play/DATA_SAFETY.md` and the Play Console Data safety form in the same release.
 - [ ] Make your code changes. **Every successful local build bumps `versionCode` by 1** in `version.properties`. Commit that file alongside the release so the bump propagates and Play sees a strictly-increasing number.
 - [ ] Build the AAB locally to confirm everything compiles and to take the version-code bump:
       ```sh

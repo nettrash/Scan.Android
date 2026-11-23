@@ -1,5 +1,7 @@
-Scan 1.9 — more codes, smarter "Open in…".
-
-• Open in Wallet / torrent client / Swish / Vipps / Bezahlcode no longer does nothing when the app isn't installed — you get a "Find on Play Store" or "Copy link" prompt.
-• Open in UPI app lets you pick the app instead of jumping to WhatsApp.
-• New formats: WalletConnect, Nostr, Plus Codes, what3words, IBAN, 2FA exports, and PayPal/Cash App/Alipay/WeChat handles.
+Scan 1.10 explains codes and checks them for tricks.
+• QR safety check: look-alike addresses, address-bar tricks and stuck-on codes are flagged before you open a link.
+• “What is this code?” explanations, and “Describe the code” in Generate.
+• Live Text and Bulk scan modes; NFC tag read and write.
+• Translation (language models download from Google after you agree).
+• Passkey, digital-ID, e-invoice and product-passport codes.
+• Styled QR codes, home-screen widget, Quick Settings tile.

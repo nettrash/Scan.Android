@@ -49,7 +49,7 @@ Description: |
   Generates QR / Aztec / PDF417 / Code 128 codes with custom colours,
   centred logos, and SVG / PDF export.
 
-  100 % on-device. No accounts. No analytics. No ads. No trackers.
+  Scanned content is processed on the device. No accounts. No ads.
 
 RepoType: git
 Repo: https://github.com/nettrash/Scan.Android.git

@@ -45,7 +45,7 @@ val storedVersionCode: Int = run {
 }
 
 val resolvedVersionName: String =
-    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.9"
+    (project.findProperty("versionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.10"
 
 // Allow opting out of the bump for a single build, e.g. when running a
 // throwaway test or when CI does not want the local file mutated:
@@ -198,6 +198,20 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.mlkit.vision)
     implementation(libs.mlkit.barcode.scanning)
+    // ML Kit text recognition (bundled) — powers the Live Text scan mode.
+    implementation(libs.mlkit.text.recognition)
+    // ML Kit on-device translation — powers the Translate smart action.
+    implementation(libs.mlkit.translate)
+    // ML Kit on-device language identification (bundled) — the source
+    // language for Translate, which ML Kit cannot detect by itself.
+    implementation(libs.mlkit.language.id)
+
+    // Glance — home-screen widget.
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+    // Glance's widget sessions run on WorkManager, whose version Glance leaves
+    // at 2.7.1; resolve a current one instead (see libs.versions.toml).
+    implementation(libs.androidx.work.runtime.ktx)
 
     // ZXing — generation only
     implementation(libs.zxing.core)
@@ -212,6 +226,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.truth)
+    testImplementation(libs.androidx.work.testing)
 }
 
 // ---- IDE compatibility: legacy aggregate test-class tasks --------------

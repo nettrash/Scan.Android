@@ -23,6 +23,34 @@
         android:maxSdkVersion="32" />
 
     <!--
+        NFC (1.10): reading an NDEF tag and writing a URL / Wi-Fi / contact
+        to a writable one. Mirrors the iOS `NFCReaderUsageDescription` plus
+        the NDEF/TAG reader-session entitlement — on Android the permission
+        is the whole story (there is no per-app entitlement portal), and it
+        is a normal permission, so it is granted at install without a prompt.
+
+        Reading and writing both happen only inside an explicit
+        `NfcAdapter.enableReaderMode` session started from a resumed
+        activity and switched off again when the screen pauses
+        (me.nettrash.scan.nfc.NfcTagWriter). Deliberately *no*
+        TECH_DISCOVERED / TAG_DISCOVERED intent filter: that would wake the
+        app on every tag the phone walks past, which is exactly the
+        background reading the iOS side refuses to do.
+    -->
+    <uses-permission android:name="android.permission.NFC" />
+
+    <!--
+        ACCESS_NETWORK_STATE (1.10): the on-device translator's download
+        prompt says "You're on mobile data" before a ~30 MB language model
+        is fetched, which needs ConnectivityManager. A normal permission,
+        granted at install; it was already in the merged manifest through
+        WorkManager (which Glance, the widget toolkit, depends on), and is
+        declared here so the prompt does not hinge on a transitive library.
+        Nothing about the network is read beyond "metered or not".
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
        Camera is the primary feature, but the Generate tab and History work
        without it — and Play's pre-launch test farm includes devices with
        broken / unavailable cameras. Marking it `required="false"` lets the
@@ -31,6 +59,16 @@
     -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!--
+       NFC is the tap-to-scan sibling of the camera: a real bonus where the
+       hardware exists, and invisible where it doesn't. `required="false"`
+       matters — plenty of shipping Android phones have no NFC at all, and
+       `required="true"` would hide Scan from them on Play. The UI gates the
+       NFC controls on NfcSupport.isSupported instead.
+    -->
+    <uses-feature
+        android:name="android.hardware.nfc"
+        android:required="false" />
 
     <application
         android:name=".ScanApplication"
@@ -108,7 +146,38 @@
                 <data android:mimeType="image/*" />
                 <data android:mimeType="application/pdf" />
             </intent-filter>
+
+            <!--
+                Long-press app-icon shortcuts (res/xml/shortcuts.xml):
+                Scan a code / Generate a code / Recent scans. The Android
+                counterpart of `ScanAppShortcuts` in Scan/ScanIntents.swift.
+                Consumed by the launcher when it enumerates shortcuts for the
+                MainActivity launcher entry.
+            -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!--
+            Where the static shortcuts above land. The system starts a static
+            shortcut with NEW_TASK | CLEAR_TASK, which aimed at MainActivity
+            would finish a running one (and the in-memory Bulk list with it).
+            This invisible trampoline runs in its own empty-affinity task,
+            forwards the request to MainActivity the way the widget and the
+            tile do (CLEAR_TOP | SINGLE_TOP, so a warm app gets onNewIntent)
+            and finishes at once (me.nettrash.scan.widget.ShortcutTrampolineActivity).
+            Not exported: the launcher starts shortcut intents on behalf of
+            this app, so nothing else needs to reach it.
+        -->
+        <activity
+            android:name=".widget.ShortcutTrampolineActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
 
         <!--
             Mints content:// URIs for files the app shares out via
@@ -129,6 +198,52 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
+
+        <!--
+            Home-screen widget: the newest scans, one tap back into the app.
+            Android counterpart of the App Intents / AppShortcutsProvider set
+            in Scan/ScanIntents.swift (StartScanningIntent opens the camera,
+            CopyRecentScanIntent surfaces the newest value).
+
+            The receiver is Glance's GlanceAppWidgetReceiver subclass; the
+            GlanceAppWidget it renders lives beside it in
+            me.nettrash.scan.widget.RecentScansWidget.
+
+            exported=false is correct for a widget provider: APPWIDGET_UPDATE
+            is delivered by the system, which is exempt from the exported
+            gate, so keeping it private stops other apps from spoofing
+            updates into the widget.
+        -->
+        <receiver
+            android:name=".widget.RecentScansWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_recent_scans_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/recent_scans_widget_info" />
+        </receiver>
+
+        <!--
+            Quick Settings tile: one tap from the shade straight into the
+            scanner (me.nettrash.scan.tile.ScanTileService). The
+            BIND_QUICK_SETTINGS_TILE permission is held only by the system,
+            which is what makes `exported="true"` safe here. The icon is the
+            tile's own white-on-transparent glyph: SystemUI tints tile icons,
+            which would turn the opaque launcher icon into a solid blob.
+        -->
+        <service
+            android:name=".tile.ScanTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_scan"
+            android:label="@string/tile_scan_a_code"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
     </application>
 

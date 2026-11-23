@@ -33,4 +33,21 @@ class SettingsViewModel @Inject constructor(
     fun setContinuousScan(value: Boolean) {
         viewModelScope.launch { repo.setContinuousScan(value) }
     }
+
+    /// Settings → Insights: the on-device assistant ("What is this
+    /// code?" and the Generate tab's "describe the code" box).
+    fun setAssistantEnabled(value: Boolean) {
+        viewModelScope.launch { repo.setAssistantEnabled(value) }
+    }
+
+    /// Settings → Insights: the QR safety check (banner + guarded open).
+    fun setRiskChecksEnabled(value: Boolean) {
+        viewModelScope.launch { repo.setRiskChecksEnabled(value) }
+    }
+
+    /// Settings → Insights: the Translate target — a catalog identifier,
+    /// or `TranslationCatalog.SYSTEM_TAG` for the device language.
+    fun setTranslateLanguage(value: String) {
+        viewModelScope.launch { repo.setTranslateLanguage(value) }
+    }
 }

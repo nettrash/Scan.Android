@@ -10,6 +10,14 @@ The payload-decomposition layer is a line-for-line Kotlin port of the iOS app's 
 
 Live-camera scanning of every symbology ML Kit's bundled barcode model supports: **QR**, **Aztec**, **PDF417**, **Data Matrix**, **EAN-8 / EAN-13**, **UPC-A / UPC-E**, **Code 39**, **Code 93**, **Code 128**, **ITF**, and **Codabar**. The viewfinder uses CameraX's `PreviewView` with an `ImageAnalysis` use-case running the ML Kit `BarcodeScanner` on each frame; results are streamed to the UI via a `StateFlow` with a 1.5 s dedupe window so the analyzer can run at full frame-rate without spamming the result sheet. Torch toggle, Photo-Picker import (uses `ActivityResultContracts.PickVisualMedia` so no `READ_MEDIA_IMAGES` permission is required), inline error surface for malformed images.
 
+Three scan modes, remembered between launches:
+
+- **Codes** — the behaviour above.
+- **Live Text** — ML Kit's bundled text recognizer (Latin script) runs beside the barcode scanner; recognised text blocks are listed and a tap opens a card with Copy, Share and Translate. A code that stays in view opens its sheet once per stay.
+- **Bulk** — keeps scanning, deduplicates by value and counts sightings (up to 500 codes, in memory only). The list survives mode and tab switches until Clear; "Save all to History" writes only codes not saved yet; "Export CSV" shares `value,symbology,kind,sightings,first_seen`.
+
+**NFC** — a read button beside the import menu reads a tag's first readable record (text, URI, Smart Poster, Wi-Fi configuration, vCard) into the normal result sheet. Reader mode runs only after the tap and stops when the screen pauses; phones without NFC show no NFC controls.
+
 ### Smart payload decomposition
 
 The decoded string is parsed and rendered as structured fields with per-row tap-to-copy. Recognised formats:
@@ -21,12 +29,15 @@ The decoded string is parsed and rendered as structured fields with per-row tap-
 | Geolocation | `geo:` |
 | Identity | vCard (3.0), MECARD |
 | Calendar | iCalendar VEVENT (line-folded, UTC / TZID / all-day dates) |
-| Authentication | `otpauth://` |
+| Authentication | `otpauth://`, FIDO cross-device passkey QR (`FIDO:/`, CTAP 2.2 hybrid transport) |
 | Retail | EAN-8 / EAN-13 / UPC-A / UPC-E / ITF-14 product codes |
 | Cryptocurrency | Bitcoin (BIP-21), Ethereum (EIP-681 with chain ID), Litecoin, Bitcoin Cash, Dogecoin, Monero, Cardano, Solana, Lightning (BOLT-11) |
 | Bank payments | EPC SEPA Payment QR / GiroCode (EU), Swiss QR-bill (SPC), Czech SPD (Spayd), Slovak Pay by Square (recognition only — decoding needs LZMA), EMVCo Merchant QR with nested-template drilling for Pix, PayNow, PromptPay, CoDi, UPI-via-EMVCo, DuitNow, QRIS, FPS, NAPAS, NETS and friends, Indian UPI (`upi://pay`), Bezahlcode (German legacy `bank://` / `bezahlcode://`), Serbian NBS IPS QR (Prenesi — PR / PT / PK) |
 | Mobile-payment apps | Swish (Sweden, base64-JSON-encoded `swish://`), Vipps (Norway), MobilePay (Denmark / Finland), Bizum (Spain), iDEAL (Netherlands) |
 | Receipts | Serbian SUF fiscal receipt |
+| Digital identity | ISO/IEC 18013-5 `mdoc:` device-engagement QR and the second-edition reader QR, ISO/IEC 18013-7 `mdoc://` (connection details only); OpenID4VP 1.0 / HAIP requests incl. DCQL; OpenID4VCI 1.0 offers; SD-JWT VCs. Decode only — no hand-off, no `request_uri` fetch, no signature verification |
+| Documents | EN 16931 e-invoice summary in CII syntax (ZUGFeRD / Factur-X / XRechnung CII), raw XML or base64 |
+| Product data | GS1 Application Identifiers (parens, FNC1, Digital Link), incl. **Digital Product Passports** (a Digital Link with a `dpp` path segment or query key) |
 
 ### Smart actions
 
@@ -43,6 +54,11 @@ Per payload type, dispatched via standard Android Intents so any installed handl
 - **UPI** — `ACTION_VIEW` with the `upi://` URI; the OS picks an installed UPI app — PhonePe, GPay, Paytm, BHIM…
 - **Mobile-payment apps** — `ACTION_VIEW` with the registered URI scheme.
 - **Serbian SUF receipt** — Open the official PURS verification page.
+- **Passkey (`FIDO:/`)** — decodes the hybrid-transport blob (purpose, generated time, tunnel-server count) with a phishing caution. Informational only: the QR secret is never shown, and only the system camera flow can complete the sign-in.
+- **All payloads — QR safety check.** Graded note / caution / danger findings from the same 28 on-device rules as iOS (look-alike and disguised hosts, address-bar tricks, IP hosts, open redirects, shorteners, plain HTTP, exposed secrets, payment-code and two-codes-in-one-frame tamper signs, …). A danger code's Open / Verify / Open-in buttons become "Copy link" until "I understand — open anyway". Ordinary links raise nothing.
+- **All payloads — "What is this code?"** A plain-language explanation from the built-in, deterministic explainer; credentials are blanked first.
+- **Text / URL / e-mail — Translate** with ML Kit on-device translation (source language from bundled ML Kit language identification). A missing ~30 MB language model is downloaded from Google only after a dialog the user confirms.
+- Settings → Insights holds the switches for the assistant and the safety check (both on by default) and the Translate target language.
 - All payloads — Copy raw to the system clipboard, Share via `ACTION_SEND`.
 
 ### Generation
@@ -53,6 +69,15 @@ A dedicated **Generate** tab builds 1D / 2D codes from structured input via ZXin
 - **Symbologies** — QR, Aztec, PDF417, Code 128.
 - **Outputs** — Save the rendered PNG to `MediaStore` under `Pictures/Scan/`, share via `ACTION_SEND` with the resulting content URI, or copy the encoded *string* to the clipboard.
 - Live preview that re-renders on every keystroke; integer-scaled rendering for crisp module edges.
+- **Styles** — module shapes, eye shapes, gradient inks, a logo and presets, identical to iOS; PNG, SVG and PDF keep the style, and an unstyled code is unchanged.
+- **Describe the code** — a sentence ("Wi-Fi for network BlueHouse, password hunter2") fills in the form.
+- **Write to NFC tag** — links (web, phone, e-mail, SMS, map) as URI records, WPA/WPA2/open Wi-Fi as a Wi-Fi Simple Configuration token, contacts as `text/vcard`, anything else as text; blank tags are formatted first. Byte-identical to iOS.
+
+### Widget, tile and shortcuts
+
+- **Recent scans** home-screen widget (Glance) — lists the newest scans by kind, plus a link's host or a Wi-Fi network's name; never a password, secret or full value. A tap opens the scan in the app.
+- **Quick Settings tile** — opens the camera.
+- **Launcher shortcuts** — Scan a code / Generate a code / Recent scans, routed through a trampoline activity so a running app keeps its state.
 
 ### History
 
@@ -69,8 +94,8 @@ The launcher icon takes the QR motif from the iOS asset (a real, scannable QR co
 - **`compileSdk` / `targetSdk`**: 36 (mirrors `Geo.Android`).
 - **`minSdk`**: 28 (Android 9).
 - **JDK**: 17 (set via `compileOptions` and `kotlin.compilerOptions.jvmTarget`).
-- **Gradle**: 9.4.1 (per `gradle/wrapper/gradle-wrapper.properties`).
-- **AGP**: 9.1.1.
+- **Gradle**: 9.6.0 (per `gradle/wrapper/gradle-wrapper.properties`).
+- **AGP**: 9.5.1.
 - **Kotlin**: 2.3.20.
 - **Android Studio**: latest stable that ships with a Compose Compiler matching Kotlin 2.3.
 
@@ -80,15 +105,20 @@ Declared in `AndroidManifest.xml`:
 
 | Permission | Used for |
 | --- | --- |
-| `android.permission.CAMERA` | Live barcode scanning. Requested at runtime via Accompanist Permissions when the user first opens the Scan tab. |
-| `android.permission.INTERNET` | Reserved for future use; no network calls today. |
+| `android.permission.CAMERA` | Live barcode scanning and Live Text. Requested at runtime via Accompanist Permissions when the user first opens the Scan tab. |
+| `android.permission.INTERNET` | Google ML Kit only — Scan's own code makes no network requests. ML Kit downloads a translation language model (~30 MB) after the user agrees in Scan's dialog, registers a Firebase installation ID and fetches remote configuration when a translator is created, and sends Google usage / diagnostic statistics for its barcode, text-recognition, language-ID and translation APIs (the barcode telemetry predates 1.10). Scanned content is never sent. |
+| `android.permission.ACCESS_NETWORK_STATE` | Lets the translation-model download prompt say "You're on mobile data". |
+| `android.permission.NFC` | Reading an NDEF tag into the scanner and writing a generated code to a writable tag — only inside a reader-mode session the user started. |
+| `android.permission.VIBRATE` | Haptic feedback on scan. |
 | `android.permission.READ_MEDIA_IMAGES` | Declared for SDK 33+, but the Photo Picker flow uses `ActivityResultContracts.PickVisualMedia` and does **not** require this permission to be granted on Android 13+. |
 | `android.permission.READ_EXTERNAL_STORAGE` (`maxSdkVersion=32`) | Legacy storage for picked-image reads on Android 12 and below. |
 
-Hardware features:
+Merged in by libraries: `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` come with WorkManager, which Glance (the home-screen widget) uses to run widget sessions. Scan schedules no work of its own.
 
-- `android.hardware.camera` — required.
-- `android.hardware.camera.autofocus` — optional.
+Hardware features (all optional, so the app installs everywhere and hides what the device can't do):
+
+- `android.hardware.camera`, `android.hardware.camera.autofocus`
+- `android.hardware.nfc`
 
 The app never reads the user's contacts, calendar, or photos directly — every privileged action is mediated by a system-supplied edit-and-save UI launched via Intent.
 
@@ -194,8 +224,6 @@ Scan.Android/
 - ML Kit barcode scanner module download via Play Services for smaller APKs (currently using the bundled model for offline-first behaviour).
 - Real decoding of Slovak Pay by Square — would need an LZMA Kotlin/Java port (e.g. XZ for Java); today the format is recognised and the user can route the raw token to a banking app via Share / Copy.
 - Localised field labels for the Serbian, Czech, and Indian formats (currently English).
-- Boarding-pass (BCBP), AAMVA driver's-licence, GS1 Application Identifier decoders.
-- Home-screen widget showing recent scans, mirroring the Geo.Android Glance widget pattern.
 
 ## License
 
