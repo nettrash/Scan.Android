@@ -12,26 +12,37 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Dangerous
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,21 +53,33 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import me.nettrash.scan.data.payload.AssistantExplanation
+import me.nettrash.scan.data.payload.QrRiskAssessor
+import me.nettrash.scan.data.payload.QrRiskFinding
+import me.nettrash.scan.data.payload.QrRiskLevel
+import me.nettrash.scan.data.payload.QrRiskReport
 import me.nettrash.scan.data.payload.LabelledField
 import me.nettrash.scan.data.payload.RegionalPaymentPayload
 import me.nettrash.scan.data.payload.RichURLPayload
+import me.nettrash.scan.data.payload.ScanAssistant
 import me.nettrash.scan.data.payload.ScanPayload
+import me.nettrash.scan.data.payload.TranslationCatalog
 
 /**
  * Smart-action buttons + labelled fields for a parsed [ScanPayload]. Mirrors
@@ -76,11 +99,68 @@ fun PayloadActions(
     /// Pass null when no save side-effect is appropriate (e.g. when
     /// viewing an already-saved scan in the History detail dialog).
     onSaveAsLoyaltyCard: ((String) -> Unit)? = null,
+    /// How many distinct codes the camera saw in the same frame. More than
+    /// one is the tamper-sticker pattern, so the risk assessor wants to know.
+    /// iOS passes `codesInFrame` through from the scanner; 1 is "I only know
+    /// about this one".
+    codesInFrame: Int = 1,
+    /// `SettingsState.assistantEnabled` — gates the "What is this code?" row.
+    /// Defaults to the user's setting ([LocalScanSettings]), so every host —
+    /// scanner sheet, History, App Links, Share to Scan — obeys the toggle.
+    assistantEnabled: Boolean = LocalScanSettings.current.assistantEnabled,
+    /// `SettingsState.riskChecksEnabled` — when off, no banner and no gating.
+    riskChecksEnabled: Boolean = LocalScanSettings.current.riskChecksEnabled,
+    /// `SettingsState.translateLanguage` — target for the translate row.
+    translateLanguage: String = LocalScanSettings.current.translateLanguage,
 ) {
     val context = LocalContext.current
+    val riskReport = remember(raw, payload, codesInFrame, riskChecksEnabled) {
+        if (riskChecksEnabled) QrRiskAssessor.assess(raw, payload, codesInFrame) else null
+    }
+    /// The banner's "open anyway" puts a blocked code's open button back,
+    /// exactly like the iOS `riskConfirmed` flag.
+    var riskConfirmed by remember(raw) { mutableStateOf(false) }
+    /// A link nested inside another payload (a contact card's URL) waiting on
+    /// the "looks suspicious" dialog — iOS `gatedURL`.
+    var gatedLink by remember(raw) { mutableStateOf<String?>(null) }
+
+    /// iOS `openIsBlocked`: the safety check is objecting to this code and the
+    /// user has not chosen "open anyway" on the banner. While it holds, the
+    /// code's own open action is replaced by "Copy link" — a suspicious link
+    /// can still be used deliberately, it just can't be opened by the reflex
+    /// tap the attacker is counting on.
+    val openIsBlocked = riskChecksEnabled && riskReport?.isBlocking == true && !riskConfirmed
+
+    /// iOS `openNestedLink`: a link inside another payload is graded on its
+    /// own — the code-level verdict never looked at it — and asks first when
+    /// it is suspicious.
+    fun openNestedLink(link: String) {
+        if (riskChecksEnabled && QrRiskAssessor.assess(link).isBlocking) {
+            gatedLink = link
+        } else {
+            openUri(context, link)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SmartActions(payload, context, onSaveAsLoyaltyCard)
+        // Deliberately quiet on the 99% of codes that are ordinary: the shield
+        // row only appears when something actually fired, so the badge keeps
+        // its meaning instead of becoming wallpaper.
+        if (riskReport != null && !riskReport.isEmpty) {
+            QrRiskBanner(
+                report = riskReport,
+                confirmedOpen = riskConfirmed,
+                onConfirmOpen = { riskConfirmed = true },
+            )
+        }
+
+        SmartActions(
+            payload = payload,
+            context = context,
+            onSaveAsLoyaltyCard = onSaveAsLoyaltyCard,
+            openIsBlocked = openIsBlocked,
+            openNestedLink = ::openNestedLink,
+        )
 
         HorizontalDivider()
 
@@ -94,6 +174,40 @@ fun PayloadActions(
             Spacer(Modifier.width(8.dp))
             Text("Share")
         }
+
+        // On-device helpers. Both are pull-only: nothing is explained or
+        // translated until the user asks, and neither sends what was scanned
+        // anywhere. Settings → Insights can switch the assistant off.
+        AssistantRow(raw = raw, payload = payload, assistantEnabled = assistantEnabled)
+
+        if (TranslationCatalog.isTranslatable(payload)) {
+            TranslatePanel(text = raw, target = TranslationCatalog.resolved(translateLanguage))
+        }
+    }
+
+    gatedLink?.let { link ->
+        AlertDialog(
+            onDismissRequest = { gatedLink = null },
+            title = { Text("This link looks suspicious") },
+            // The reason, which names the host lower-cased — not the link as
+            // written, where paypaI.com reads as paypal.com (iOS the same).
+            text = { Text(QrRiskAssessor.gatedLinkMessage(link)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    gatedLink = null
+                    openUri(context, link)
+                }) { Text("Open anyway") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        gatedLink = null
+                        copyToClipboard(context, link)
+                    }) { Text("Copy link") }
+                    TextButton(onClick = { gatedLink = null }) { Text("Not now") }
+                }
+            },
+        )
     }
 }
 
@@ -101,7 +215,13 @@ fun PayloadActions(
 private fun SmartActions(
     payload: ScanPayload,
     context: Context,
-    onSaveAsLoyaltyCard: ((String) -> Unit)? = null,
+    onSaveAsLoyaltyCard: ((String) -> Unit)?,
+    /// While true the code's own open buttons become "Copy link" (iOS
+    /// `guardedOpen`); see [PayloadActions].
+    openIsBlocked: Boolean,
+    /// Opens a link found *inside* the payload, asking first when that link
+    /// alone looks dangerous.
+    openNestedLink: (String) -> Unit,
 ) {
     // "No app installed" fallback. Populated when an `ACTION_VIEW` for a
     // custom-scheme payment / wallet / magnet URI finds no handler, so the
@@ -111,9 +231,12 @@ private fun SmartActions(
 
     when (payload) {
         is ScanPayload.Url -> {
-            ActionButton(Icons.Filled.OpenInBrowser, "Open in browser") {
-                openUri(context, payload.url)
-            }
+            GuardedOpenButton(
+                blocked = openIsBlocked,
+                icon = Icons.Filled.OpenInBrowser,
+                label = "Open in browser",
+                link = payload.url,
+            ) { openUri(context, payload.url) }
             Text(payload.url, fontFamily = FontFamily.Monospace, overflow = TextOverflow.Ellipsis, maxLines = 2)
         }
 
@@ -208,7 +331,7 @@ private fun SmartActions(
                 }
             }
             c.urls.forEach { u ->
-                ActionButton(Icons.Filled.OpenInBrowser, u) { openUri(context, u) }
+                ActionButton(Icons.Filled.OpenInBrowser, u) { openNestedLink(u) }
             }
             ActionButton(Icons.Filled.Person, "Add to Contacts") {
                 addToContacts(context, c)
@@ -265,9 +388,12 @@ private fun SmartActions(
 
         is ScanPayload.SufReceipt -> {
             LabelledFieldsList(payload.payload.labelledFields())
-            ActionButton(Icons.Filled.Calculate, "Verify Receipt") {
-                openUri(context, payload.payload.url)
-            }
+            GuardedOpenButton(
+                blocked = openIsBlocked,
+                icon = Icons.Filled.Calculate,
+                label = "Verify Receipt",
+                link = payload.payload.url,
+            ) { openUri(context, payload.payload.url) }
         }
 
         is ScanPayload.IpsPayment -> LabelledFieldsList(payload.payload.labelledFields())
@@ -324,7 +450,12 @@ private fun SmartActions(
                 )
             }
             val (label, _) = richUrlAction(payload.payload.kind)
-            ActionButton(Icons.Filled.OpenInBrowser, label) {
+            GuardedOpenButton(
+                blocked = openIsBlocked,
+                icon = Icons.Filled.OpenInBrowser,
+                label = label,
+                link = payload.payload.url,
+            ) {
                 // Personal-payment brands can hand off to a custom-scheme app
                 // (alipays://, weixin://, twint://) that may not be installed;
                 // route them through the Play Store fallback. The https-backed
@@ -430,6 +561,71 @@ private fun SmartActions(
 
         is ScanPayload.BoardingPass -> LabelledFieldsList(payload.payload.labelledFields())
         is ScanPayload.DrivingLicense -> LabelledFieldsList(payload.payload.labelledFields())
+
+        is ScanPayload.MobileDrivingLicense -> {
+            val p = payload.payload
+            LabelledFieldsList(p.labelledFields())
+            // Scan is neither the wallet nor the reader: no action here
+            // could do anything but mislead, so the sheet only explains.
+            p.warnings().forEach { warning ->
+                Text(
+                    warning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = RiskCaution,
+                )
+            }
+            Text(
+                p.notice,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+
+        is ScanPayload.VerifiableCredential -> {
+            val p = payload.payload
+            LabelledFieldsList(p.labelledFields())
+            p.cautions().forEach { caution ->
+                Text(
+                    caution,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = RiskCaution,
+                )
+            }
+            Text(
+                p.footnote,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+
+        is ScanPayload.EInvoice -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            Text(
+                "Compare the IBAN and total with the invoice you are holding " +
+                    "before you approve any transfer — that pair is exactly what a " +
+                    "swapped QR changes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+
+        is ScanPayload.DigitalProductPassport -> {
+            LabelledFieldsList(payload.payload.labelledFields())
+            // The plain GS1 sheet's web search, which a passport carrier
+            // must not lose: it sends the GTIN, never the serial.
+            payload.payload.gtin?.let { gtin ->
+                ActionButton(Icons.Filled.Search, "Look up GTIN $gtin") {
+                    openUri(context, "https://www.google.com/search?q=GTIN+${Uri.encode(gtin)}")
+                }
+            }
+            Text(
+                "Everything above is encoded in the code itself. The rest of the " +
+                    "passport lives behind the resolver link; Scan never follows it, " +
+                    "because that would send your serial number to somebody's server.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
 
         is ScanPayload.Text -> Unit
     }
@@ -579,6 +775,45 @@ private fun richUrlAction(kind: RichURLPayload.Kind): Pair<String, String> = whe
     RichURLPayload.Kind.SIGNAL       -> "Open in Signal" to "Signal"
     RichURLPayload.Kind.MATRIX       -> "Open in Matrix" to "Matrix"
     RichURLPayload.Kind.MEETING      -> "Join meeting" to "Meeting"
+}
+
+/**
+ * A code's own open action — or, while the safety check objects to the code,
+ * "Copy link" plus a line saying where the override lives. Mirrors iOS
+ * `guardedOpen(_:systemImage:link:open:)` in `PayloadActionsView.swift`: a
+ * suspicious link can still be used deliberately, it just cannot be opened by
+ * the reflex tap the attacker is counting on.
+ */
+@Composable
+private fun GuardedOpenButton(
+    blocked: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    link: String,
+    open: () -> Unit,
+) {
+    if (!blocked) {
+        ActionButton(icon, label, open)
+        return
+    }
+    val context = LocalContext.current
+    var copied by remember(link) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1200)
+            copied = false
+        }
+    }
+    ActionButton(Icons.Filled.ContentCopy, if (copied) "Copied!" else "Copy link") {
+        copyToClipboard(context, link)
+        copied = true
+    }
+    Text(
+        "Opening is turned off because the safety check flagged this code. If you are sure, " +
+            "expand the warning above and choose \u201Copen anyway\u201D.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+    )
 }
 
 @Composable
@@ -748,4 +983,244 @@ internal fun friendlyWifiSecurity(raw: String): String = when (raw.uppercase()) 
     "HS20", "PASSPOINT", "OSU" -> "Passpoint (HS20)"
     "NOPASS", "NONE", "" -> "None"
     else              -> raw
+}
+
+// ---- Safety banner --------------------------------------------------------
+
+/**
+ * Banner colours for [QrRiskBanner]. iOS uses `.green` / `.orange` / `.red`
+ * with very low-alpha fills; these are the Material-tuned equivalents so the
+ * badge reads the same in light and dark themes.
+ */
+private val RiskSafe = Color(0xFF2E7D32)
+private val RiskCaution = Color(0xFFF57C00)
+private val RiskDanger = Color(0xFFD32F2F)
+
+/**
+ * The safety banner shown above the smart actions, with its expandable
+ * findings. Mirrors the iOS `QrRiskView`: a header row naming the verdict,
+ * tap to reveal each finding's title + detail, and — for a blocking code — an
+ * explicit "open anyway" that unlocks the gated action.
+ */
+@Composable
+private fun QrRiskBanner(
+    report: QrRiskReport,
+    confirmedOpen: Boolean,
+    onConfirmOpen: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val tint = when (report.level) {
+        QrRiskLevel.SAFE -> RiskSafe
+        QrRiskLevel.CAUTION -> RiskCaution
+        QrRiskLevel.DANGER -> RiskDanger
+    }
+    val background = tint.copy(alpha = when (report.level) {
+        QrRiskLevel.SAFE -> 0.08f
+        QrRiskLevel.CAUTION -> 0.10f
+        QrRiskLevel.DANGER -> 0.12f
+    })
+    val border = tint.copy(alpha = when (report.level) {
+        QrRiskLevel.SAFE -> 0.25f
+        QrRiskLevel.CAUTION -> 0.35f
+        QrRiskLevel.DANGER -> 0.45f
+    })
+    val shape = RoundedCornerShape(12.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(background, shape)
+            .border(1.dp, border, shape)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                when (report.level) {
+                    QrRiskLevel.SAFE -> Icons.Filled.CheckCircle
+                    QrRiskLevel.CAUTION -> Icons.Filled.Warning
+                    QrRiskLevel.DANGER -> Icons.Filled.Dangerous
+                },
+                contentDescription = null,
+                tint = tint,
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    report.level.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    if (expanded) {
+                        "Hide details"
+                    } else {
+                        val count = report.findings.size
+                        "${report.headline} · ${if (count == 1) "1 detail" else "$count details"}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+            }
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (expanded) "Hide details" else "Show details",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            )
+        }
+
+        if (expanded) {
+            report.findings.forEach { finding -> RiskFindingRow(finding) }
+            if (report.isBlocking && !confirmedOpen) {
+                TextButton(onClick = onConfirmOpen) {
+                    Icon(Icons.Filled.Warning, contentDescription = null, tint = RiskDanger)
+                    Spacer(Modifier.width(6.dp))
+                    Text("I understand — open anyway", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+/** One finding: severity glyph, title, and the sentence that explains it. */
+@Composable
+private fun RiskFindingRow(finding: QrRiskFinding) {
+    val (icon, colour) = when (finding.severity) {
+        QrRiskFinding.Severity.NOTE -> Icons.Filled.Info to
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        QrRiskFinding.Severity.CAUTION -> Icons.Filled.Warning to RiskCaution
+        QrRiskFinding.Severity.DANGER -> Icons.Filled.Dangerous to RiskDanger
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 2.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = colour)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(finding.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                finding.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+// ---- On-device assistant --------------------------------------------------
+
+/**
+ * The "What is this code?" row. Lazy: nothing runs until the user taps, and
+ * the answer always says which engine produced it. Hidden entirely when the
+ * user turned the helper off in Settings (`SettingsState.assistantEnabled`).
+ */
+@Composable
+private fun AssistantRow(
+    raw: String,
+    payload: ScanPayload,
+    assistantEnabled: Boolean,
+) {
+    if (!assistantEnabled) return
+    var explanation by remember(raw) { mutableStateOf<AssistantExplanation?>(null) }
+    var working by remember(raw) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    when {
+        working -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Thinking on the device…")
+        }
+
+        explanation != null -> ExplainCard(explanation!!)
+
+        else -> OutlinedButton(
+            onClick = {
+                working = true
+                scope.launch {
+                    explanation = ScanAssistant.explain(raw, payload)
+                    working = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("What is this code?")
+        }
+    }
+}
+
+/** The explanation itself — headline, summary, key points, cautions, source. */
+@Composable
+private fun ExplainCard(explanation: AssistantExplanation) {
+    val context = LocalContext.current
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f), shape)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text(
+                explanation.headline,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Text(explanation.summary, style = MaterialTheme.typography.bodySmall)
+        if (explanation.keyPoints.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                explanation.keyPoints.forEach { point ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("•", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            point,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                        )
+                    }
+                }
+            }
+        }
+        explanation.cautions.forEach { caution ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(
+                    Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = RiskCaution,
+                )
+                Text(caution, style = MaterialTheme.typography.bodySmall, color = RiskCaution)
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                explanation.source.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = {
+                copyToClipboard(context, "${explanation.headline}\n${explanation.summary}")
+            }) { Text("Copy", style = MaterialTheme.typography.labelLarge) }
+        }
+    }
 }

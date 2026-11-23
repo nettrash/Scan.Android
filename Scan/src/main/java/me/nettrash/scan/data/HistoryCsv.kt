@@ -19,6 +19,11 @@ import java.util.TimeZone
  * `timestamp,symbology,value,notes,favourite` with RFC 4180 quoting
  * and CRLF line endings. Power users who flip between the iOS export
  * and the Android export get an identical schema.
+ *
+ * Every cell is also neutralised against spreadsheet formula injection
+ * (see [csvField]): a scanned value is attacker-controlled text, and a
+ * spreadsheet would otherwise run a cell such as `=HYPERLINK(…)` as a
+ * formula. Both platforms write identical bytes for identical input.
  */
 object HistoryCsv {
 
@@ -61,12 +66,57 @@ object HistoryCsv {
         )
     }
 
-    /// RFC 4180 escape: only quote when we have to (saves bytes and
-    /// keeps the output friendly for naïve consumers). Embedded
-    /// double-quotes are doubled, then the whole field wrapped.
+    /// Bulk-capture export. Takes the already-rendered rows from
+    /// `BulkScanSession.csvLines()` (header first) and writes them with
+    /// the same CRLF / quoting rules as the history export, so a
+    /// spreadsheet that reads one reads both. Mirrors iOS
+    /// `HistoryCSV.writeBulk(lines:)`.
+    fun writeBulk(context: Context, lines: List<String>): android.net.Uri {
+        val sharedDir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val target = File(sharedDir, "Scan-bulk-capture.csv")
+
+        target.bufferedWriter(Charsets.UTF_8).use { w ->
+            for (line in lines) {
+                w.append(line).append("\r\n")
+            }
+        }
+
+        return FileProvider.getUriForFile(
+            context,
+            context.packageName + ".fileprovider",
+            target,
+        )
+    }
+
+    /// One CSV cell, exactly as both exports write it: formula
+    /// neutralisation, then RFC 4180 quoting. Exposed for the
+    /// bulk-capture export in `BulkScanSession`, so both exports
+    /// escape identically. Mirrors iOS `HistoryCSV.csvField`.
+    fun csvField(s: String): String = csvEscape(s)
+
+    /// Shared timestamp rendering (ISO 8601 with fractional seconds).
+    /// Mirrors iOS `HistoryCSV.timestampString`.
+    fun timestampString(millis: Long): String = isoFormatter.format(Date(millis))
+
+    /// First characters that make a spreadsheet treat a cell as a
+    /// formula (OWASP's CSV-injection list): `=` `+` `-` `@`, tab, CR.
+    private val formulaTriggers = charArrayOf('=', '+', '-', '@', '\t', '\r')
+
+    /// Formula neutralisation, then RFC 4180 escape. A cell whose first
+    /// character is a formula trigger gets a leading apostrophe, which
+    /// spreadsheets read as "this is text". The check is on the first
+    /// UTF-16 unit — for these ASCII triggers, the first Unicode scalar —
+    /// so "\r\n…" and a trigger followed by a combining mark are caught
+    /// too; the iOS escape must test the first scalar, not the first
+    /// grapheme, to write the same bytes. The apostrophe goes on before
+    /// quoting, so it ends up inside the quotes. Quoting only when we
+    /// have to saves bytes and keeps the output friendly for naïve
+    /// consumers; embedded double-quotes are doubled, then the whole
+    /// field wrapped.
     private fun csvEscape(s: String): String {
-        val needsQuoting = s.any { it == '"' || it == ',' || it == '\r' || it == '\n' }
-        if (!needsQuoting) return s
-        return "\"" + s.replace("\"", "\"\"") + "\""
+        val cell = if (s.isNotEmpty() && s[0] in formulaTriggers) "'$s" else s
+        val needsQuoting = cell.any { it == '"' || it == ',' || it == '\r' || it == '\n' }
+        if (!needsQuoting) return cell
+        return "\"" + cell.replace("\"", "\"\"") + "\""
     }
 }

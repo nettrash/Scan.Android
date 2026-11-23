@@ -15,6 +15,11 @@ okhttp = "5.3.2"
 datastore = "1.2.1"
 cameraX = "1.5.1"
 mlkitBarcode = "17.3.0"
+mlkitTextRecognition = "16.0.1"
+mlkitTranslate = "17.0.3"
+mlkitLanguageId = "17.0.6"
+glance = "1.2.0"
+work = "2.12.0"
 zxing = "3.5.3"
 accompanistPermissions = "0.37.3"
 junit = "4.13.2"
@@ -63,6 +68,29 @@ androidx-camera-mlkit-vision = { group = "androidx.camera", name = "camera-mlkit
 
 # ML Kit barcode scanning (bundled model — no Play Services prereq).
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+
+# ML Kit on-device text recognition (bundled model) — the Live Text scan mode.
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
+
+# ML Kit on-device neural translation — the Translate row. A language model is
+# downloaded from Google once, only after the user agrees in Scan's own dialog.
+# ML Kit also registers a Firebase installation ID, fetches its Remote Config
+# and sends usage statistics (the language pair) — the dialog says so; the text
+# itself never leaves the device. See the privacy note in TranslationKit.kt.
+mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
+
+# ML Kit on-device language identification (bundled model) — tells the Translate
+# row which language the scanned text is in, the job NaturalLanguage does on iOS.
+mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
+
+# Glance — RemoteViews toolbox for the recent-scans home-screen widget.
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
+# WorkManager — Glance runs widget sessions on it but only asks for 2.7.1 (2021),
+# which predates the targetSdk 34+ background rules; pin a current release.
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+# Test-only: drives Glance widget sessions (which run on WorkManager) in Robolectric.
+androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
 
 # ZXing — used to *generate* 1D / 2D codes.
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }

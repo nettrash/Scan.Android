@@ -4,4 +4,5 @@ Read & generate barcodes — and understand what's inside.
 • Smart result sheet decodes Wi-Fi, contacts, calendar events, SEPA / Swiss / Indian / Serbian payments, crypto wallets — each field tap-to-copy.
 • Generate your own QR, Aztec, PDF417 or Code 128 codes from text, URL, contact, or Wi-Fi credentials.
 • Searchable local history.
-• On-device. No network. No ads.
+• QR safety check, "What is this code?", Live Text, Bulk and NFC.
+• Scanned content stays on the device. No ads.

@@ -10,13 +10,105 @@ _(nothing yet)_
 
 ## [1.10] — 2026-11-14
 
-Passkey QR recognition, plus GS1 and driving-licence parser fixes. Mirrors the
-iOS 1.10 work. `versionName` default in `Scan/build.gradle.kts` bumped from
-`1.9` to `1.10`; `versionCode` continues to auto-increment from
-`version.properties`.
+Scan now explains codes, checks them for tricks before you act on them, reads
+printed text and NFC tags, collects codes in bulk, and decodes the identity,
+product-passport and e-invoice formats EU wallets and regulations introduced —
+plus Passkey QR recognition and GS1 / driving-licence parser fixes. Mirrors the
+iOS 1.10 work: parsers, safety rules, redaction, NFC bytes and CSV output are
+identical on both platforms for identical input. `versionName` default in
+`Scan/build.gradle.kts` bumped from `1.9` to `1.10`; `versionCode` continues to
+auto-increment from `version.properties`. Scanned content is processed on the
+device; the new network traffic is Google ML Kit's (translation models after
+consent, plus its Firebase and telemetry calls — see Notes).
 
 ### Added
 
+- **"What is this code?"** on every result sheet (scanner, History, App Links,
+  Share to Scan): a plain-language explanation from Scan's built-in,
+  deterministic explainer. Credential-shaped content (Wi-Fi passwords,
+  `otpauth` secrets, private keys, seed phrases, API tokens, OpenID4VCI
+  pre-authorised codes, long opaque blobs) is blanked first, and the cautions
+  are always the rule engine's. (`Assistant.kt`, `HeuristicExplainer.kt`,
+  `SecretRedaction.kt`)
+- **"Describe the code"** at the top of the Generate tab — a sentence such as
+  "Wi-Fi for network BlueHouse, password hunter2" fills in a text, link, Wi-Fi
+  or contact form. (`ui/generator/ComposeFormFill.kt`)
+- **QR safety check** — the graded note / caution / danger banner above the
+  smart actions, with the same 28 rules as iOS: punycode / mixed-alphabet and
+  look-alike hosts (including a brand pasted in front of someone else's
+  domain), `user@host` and backslash address tricks, raw and numeric IP hosts,
+  odd ports, open redirects, shorteners, plain HTTP, abuse-heavy TLDs, encoded
+  or oversized links, bait wording, dangerous schemes, exposed secrets
+  (private / WIF keys, BIP-39 seed phrases), 2FA enrolment codes, open Wi-Fi,
+  payee-less or preset-amount payment codes, static posters, and more than one
+  code in the frame. While a code is graded danger, its own Open / Verify /
+  Open-in buttons become "Copy link" until "I understand — open anyway"; a
+  link inside a contact card asks first when that link alone is dangerous.
+  Ordinary links, internationalised domains included, raise nothing.
+  (`QrRisk.kt`, `PayloadActions.kt`)
+- **Settings → Insights** — switches for the assistant and the safety check
+  (both on by default), the "which engine answers" line and the Translate
+  target language. Every result surface reads them through
+  `LocalScanSettings`.
+- **Live Text and Bulk modes** — the Scan tab's mode switch, remembered between
+  launches. Live Text (ML Kit text recognition, Latin script, bundled model)
+  lists the recognised text blocks; tapping one opens a card with Copy, Share
+  and Translate that stays until dismissed, and a code that stays in view
+  opens its sheet once per stay. Bulk collects every distinct code with a
+  sighting count (up to 500, in memory only); the list survives mode and tab
+  switches until Clear, "Save all to History" writes only codes not saved yet
+  (a failed save leaves the unwritten ones for a retry), and "Export CSV"
+  shares `value,symbology,kind,sightings,first_seen`. (`TextScanner.kt`,
+  `BulkScanSession.kt`, `ScanModeChrome.kt`, `BulkCaptureSheet.kt`)
+- **Translation** — ML Kit on-device translation plus bundled ML Kit language
+  identification for the source language (new dependency
+  `com.google.mlkit:language-id`). The target is Settings → Insights →
+  "Translate to" (default: the first preferred language ML Kit can translate
+  into, otherwise English). A missing language model (~30 MB) is never
+  fetched silently: a dialog names it, says it comes from Google, says what
+  else ML Kit sends Google, flags mobile data, and waits for the user. Text
+  the identifier can't place offers a "Choose the language" picker.
+  (`TranslationKit.kt`, `ui/components/TranslatePanel.kt`)
+- **NFC read and write** — a read button beside the import menu feeds a tag's
+  first readable record (text, URI, Smart Poster, Wi-Fi configuration, vCard)
+  into the normal result sheet; "Write to NFC tag" on the Generate tab writes
+  the encoded content. Records are byte-identical to iOS: web, phone, e-mail,
+  SMS and map links as RTD URI, WPA/WPA2 and open Wi-Fi as a Wi-Fi Simple
+  Configuration token, contacts as `text/vcard`, anything else as text. Reader
+  mode runs only after a tap and stops when the screen pauses; blank tags are
+  NDEF-formatted on write; switched-off NFC offers "Turn on NFC"; devices
+  without NFC show no NFC controls. (`nfc/`)
+- **Digital-identity codes** (decode only — no hand-off, no `request_uri`
+  fetch, no signature verification): ISO/IEC 18013-5 `mdoc:` engagement QR
+  codes and the second-edition reader QR, ISO/IEC 18013-7 `mdoc://`, OpenID4VP
+  1.0 / HAIP requests incl. DCQL (biometric claims flagged), OpenID4VCI 1.0
+  offers (the pre-authorised code is never shown) and SD-JWT VCs.
+  (`IdentityPayload.kt`, `VerifiableCredentialPayload.kt`, shared
+  `CBORReader.kt`)
+- **EN 16931 e-invoices (CII)** — ZUGFeRD / Factur-X / XRechnung in CII syntax,
+  raw XML or base64: guideline, number, seller and the seller's own VAT id,
+  buyer, Leitweg-ID, IBAN, total with currency, tax, dates.
+  (`InvoicePayload.kt`)
+- **Digital Product Passport** — a GS1 Digital Link with a `dpp` path segment
+  or query key: product, batch, serial, dates, countries of origin and
+  processing (AIs 422–426, full ISO 3166 table), resolver host (shown, never
+  contacted), every other GS1 element and "Look up GTIN".
+  (`DigitalProductPassport.kt`, `GS1Payload.kt`)
+- **QR styles** — module and eye shapes, gradient inks, a logo and presets,
+  identical to iOS: High error correction for shapes and logos, a whole-module
+  logo clearing sized so the code still decodes (verified with ZXing), the
+  contrast check on every ink, and warnings for dense dot codes and shaped
+  codes with a logo. PNG, SVG and PDF keep the style; an unstyled code is
+  byte-for-byte unchanged. (`QRStyle.kt`, `CodeSvg.kt`)
+- **Home-screen widget, Quick Settings tile, launcher shortcuts** — the Android
+  counterpart of the iOS App Intents. The widget lists recent scans by kind
+  (plus the host of a link or the name of a Wi-Fi network — never a password,
+  secret or full value) and refreshes while the app runs; the tile opens the
+  camera; the shortcuts ("Scan a code", "Generate a code", "Recent scans") go
+  through a trampoline activity so a running app keeps its state. "Scan a
+  code" closes whatever covers the camera. (`widget/`, `tile/`,
+  `res/xml/shortcuts.xml`)
+- **What's New** sheet for 1.10.
 - **Passkey QR (FIDO cross-device sign-in)** — recognises the `FIDO:/`
   hybrid-transport codes (CTAP 2.2) that websites show for the
   phone-as-authenticator flow. Decodes the digit-encoded CBOR to show what
@@ -25,6 +117,22 @@ iOS 1.10 work. `versionName` default in `Scan/build.gradle.kts` bumped from
   The embedded one-time secret is never displayed, and the result sheet
   explains that only the system camera flow can complete the handshake.
   Mirrors the iOS app. (`PasskeyPayload.kt`)
+
+### Changed
+
+- The camera permission rationale mentions Live Text ("…and, in Live Text
+  mode, printed text. Frames are processed on this device and are not
+  saved.").
+- History and Bulk CSV exports neutralise spreadsheet formulas: a cell starting
+  with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading
+  apostrophe. (`HistoryCsv.kt`)
+- A generated code with a logo and no other styling now uses the style
+  renderer (4-module quiet zone, the logo on a cleared square instead of a
+  22 % white punch, logo kept in SVG and PDF).
+- JSON inside scanned codes (credentials, Swish `data=`) is refused past 64
+  nesting levels, as CBOR already is — the same limit as iOS.
+- R8 keeps Glance's `ActionCallback` constructors (`proguard-rules.pro`), so
+  the widget's Refresh works in release builds.
 
 ### Fixed
 
@@ -38,6 +146,25 @@ iOS 1.10 work. `versionName` default in `Scan/build.gradle.kts` bumped from
   dropped.
 - Lint: the multi-code chip overlay no longer uses an unused
   `BoxWithConstraints` scope (`UnusedBoxWithConstraintsScope`).
+- `test-fixtures/43-emvco-pix.png` is regenerated with correct TLV lengths and
+  CRC; it used to decode as plain text instead of a merchant QR.
+
+### Notes
+
+- New dependencies: ML Kit `text-recognition` 16.0.1 and `language-id` 17.0.6
+  (both bundled models), ML Kit `translate` 17.0.3, Glance 1.2.0, and
+  `androidx.work:work-runtime-ktx` pinned to 2.12.0 (Glance asks for 2.7.1).
+  Together they add roughly 27 MB per arm64 device.
+- WorkManager merges `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and
+  `FOREGROUND_SERVICE` into the manifest (Glance runs widget sessions on it;
+  Scan schedules no work of its own). `NFC` is new; `ACCESS_NETWORK_STATE` is
+  used for the download dialog's mobile-data line.
+- Network: ML Kit translation downloads its language models from Google after
+  the user agrees, registers a Firebase installation ID and fetches remote
+  configuration when a translator is created, and — like the barcode scanner
+  before 1.10 — sends Google usage and diagnostic statistics (including the
+  language pair). Scanned text is never sent. The Play Data-safety answers
+  and the privacy policy must reflect this (see `DATA_SAFETY.md`).
 
 ## [1.9] — 2026-06-12
 

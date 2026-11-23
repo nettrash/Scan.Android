@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.Button
@@ -68,16 +70,25 @@ fun ShareResultSheet(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            when (state) {
-                is ShareIntakeDispatcher.State.Loading -> LoadingBlock()
-                is ShareIntakeDispatcher.State.Failed -> FailedBlock(state.message)
-                is ShareIntakeDispatcher.State.Ready -> ReadyBlock(
-                    codes = state.codes,
-                    scannerViewModel = scannerViewModel,
-                )
-                ShareIntakeDispatcher.State.Idle -> {
-                    // The dispatcher never holds Idle while the sheet
-                    // is up — onDismiss already nil'd it. Defensive.
+            // The result scrolls inside the space Done leaves it: the safety
+            // banner, an explanation and a translation can outgrow the sheet.
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                when (state) {
+                    is ShareIntakeDispatcher.State.Loading -> LoadingBlock()
+                    is ShareIntakeDispatcher.State.Failed -> FailedBlock(state.message)
+                    is ShareIntakeDispatcher.State.Ready -> ReadyBlock(
+                        codes = state.codes,
+                        scannerViewModel = scannerViewModel,
+                    )
+                    ShareIntakeDispatcher.State.Idle -> {
+                        // The dispatcher never holds Idle while the sheet
+                        // is up — onDismiss already nil'd it. Defensive.
+                    }
                 }
             }
 

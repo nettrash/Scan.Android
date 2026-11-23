@@ -96,6 +96,26 @@ class RegionalPaymentParserTest {
         assertThat(labels["Message"]).isEqualTo("Lunch")
     }
 
+    /**
+     * Swish's data= JSON is refused past 64 nested containers, as on iOS
+     * (PayloadCodec.jsonNestingIsWithinLimit): 64 still parses, 65 shows
+     * the raw blob. Mirrors testSwishJSONNestingIsCappedLikeEveryOtherBlob.
+     */
+    @Test fun swishJsonNestingIsCappedLikeEveryOtherBlob() {
+        fun swish(arrays: Int): RegionalPaymentPayload {
+            val json = """{"payee":"+46701234567","x":""" + "[".repeat(arrays) + "]".repeat(arrays) + "}"
+            val b64 = Base64.getEncoder().encodeToString(json.toByteArray(Charsets.UTF_8))
+            val p = ScanPayloadParser.parse("swish://payment?data=$b64")
+            assertThat(p).isInstanceOf(ScanPayload.Regional::class.java)
+            return (p as ScanPayload.Regional).payload
+        }
+        // The object plus 63 arrays = 64 containers: still parsed.
+        assertThat(swish(63).parsed.associate { it.label to it.value }["Payee"]).isEqualTo("+46701234567")
+        // One more: shown raw, never parsed.
+        val deep = swish(64).parsed
+        assertThat(deep.map { it.label }).containsExactly("Data")
+    }
+
     // ---- Vipps ------------------------------------------------------------
 
     @Test fun recognisesVippsURI() {

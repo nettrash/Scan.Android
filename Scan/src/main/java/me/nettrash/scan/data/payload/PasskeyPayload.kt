@@ -95,12 +95,12 @@ object PasskeyParser {
         var linkable: Boolean? = null
         for ((key, value) in fields) {
             when {
-                key == 2L && value is CborValue.Uint && value.v <= Int.MAX_VALUE ->
+                key == 2uL && value is CBORReader.Value.Uint && value.v <= Int.MAX_VALUE.toULong() ->
                     tunnelDomains = value.v.toInt()
-                key == 3L && value is CborValue.Uint && value.v < (1L shl 40) ->
-                    generatedAt = value.v
-                key == 4L && value is CborValue.Bool -> linkable = value.v
-                key == 5L && value is CborValue.Text -> operationHint = value.v
+                key == 3uL && value is CBORReader.Value.Uint && value.v < (1uL shl 40) ->
+                    generatedAt = value.v.toLong()
+                key == 4uL && value is CBORReader.Value.Bool -> linkable = value.v
+                key == 5uL && value is CBORReader.Value.Text -> operationHint = value.v
                 // Keys 0 (public key) / 1 (QR secret) / unknown — ignored.
             }
         }
@@ -152,91 +152,26 @@ object PasskeyParser {
 
     // ---- CBOR ----
 
-    private sealed class CborValue {
-        data class Uint(val v: Long) : CborValue()
-        data class Bytes(val v: ByteArray) : CborValue() {
-            override fun equals(other: Any?) = other is Bytes && v.contentEquals(other.v)
-            override fun hashCode() = v.contentHashCode()
-        }
-        data class Text(val v: String) : CborValue()
-        data class Bool(val v: Boolean) : CborValue()
-        object Other : CborValue()
-    }
-
-    private fun decodeCborMap(bytes: ByteArray): List<Pair<Long, CborValue>>? {
-        val reader = CborReader(bytes)
+    /**
+     * The top-level CTAP map, keyed by unsigned integer. Walked with the
+     * shared [CBORReader] (1.10 moved it out of this file once the mDL
+     * parser needed it too). Non-integer keys are skipped, exactly as the
+     * iOS `decodeCBORMap` skips them.
+     */
+    private fun decodeCborMap(bytes: ByteArray): List<Pair<ULong, CBORReader.Value>>? {
+        val reader = CBORReader(bytes)
         val header = reader.readHeader() ?: return null
-        if (header.first != 5) return null
-        val pairs = mutableListOf<Pair<Long, CborValue>>()
-        repeat(clampCount(header.second, bytes.size) ?: return null) {
+        if (header.major != 5) return null
+        // Every entry costs at least two bytes, so a declared count beyond
+        // the input can never be met. iOS finds that out by running dry
+        // partway through; bounding it first also keeps the count an Int.
+        if (header.arg < 0 || header.arg > bytes.size) return null
+        val pairs = mutableListOf<Pair<ULong, CBORReader.Value>>()
+        repeat(header.arg.toInt()) {
             val key = reader.readValue() ?: return null
             val value = reader.readValue() ?: return null
-            if (key is CborValue.Uint) pairs += key.v to value
+            if (key is CBORReader.Value.Uint) pairs += key.v to value
         }
         return pairs
-    }
-
-    /** A declared count can't exceed the remaining bytes (≥ 1 byte each). */
-    private fun clampCount(arg: Long, limit: Int): Int? =
-        if (arg in 0..limit.toLong()) arg.toInt() else null
-
-    /**
-     * Minimal CBOR reader — just enough to walk the CTAP2 canonical-CBOR
-     * map inside a hybrid-transport QR. Understands unsigned ints, byte /
-     * text strings and bools; skips everything else structurally.
-     * Indefinite lengths (banned in CTAP2 CBOR) abort the parse.
-     * Mirrors [ProtoReader]'s never-throw style.
-     */
-    private class CborReader(private val bytes: ByteArray) {
-        private var i = 0
-
-        /** (major type, argument) or null on truncation / indefinite length. */
-        fun readHeader(): Pair<Int, Long>? {
-            if (i >= bytes.size) return null
-            val b = bytes[i++].toInt() and 0xFF
-            val major = b shr 5
-            val info = b and 0x1F
-            return when {
-                info < 24 -> major to info.toLong()
-                info <= 27 -> {
-                    val n = 1 shl (info - 24)
-                    if (i + n > bytes.size) return null
-                    var v = 0L
-                    repeat(n) { v = (v shl 8) or (bytes[i++].toLong() and 0xFF) }
-                    major to v
-                }
-                else -> null
-            }
-        }
-
-        fun readValue(): CborValue? {
-            val (major, arg) = readHeader() ?: return null
-            return when (major) {
-                0 -> if (arg >= 0) CborValue.Uint(arg) else CborValue.Other
-                1 -> CborValue.Other            // negative int — arg consumed
-                2, 3 -> {
-                    val len = clampCount(arg, bytes.size - i) ?: return null
-                    val d = bytes.copyOfRange(i, i + len)
-                    i += len
-                    if (major == 2) CborValue.Bytes(d)
-                    else CborValue.Text(d.toString(Charsets.UTF_8))
-                }
-                4, 5 -> {
-                    // Nested array / map — skip elementwise.
-                    val count = clampCount(arg, bytes.size) ?: return null
-                    repeat(if (major == 5) 2 * count else count) {
-                        readValue() ?: return null
-                    }
-                    CborValue.Other
-                }
-                6 -> readValue()?.let { CborValue.Other }
-                7 -> when (arg) {
-                    20L -> CborValue.Bool(false)
-                    21L -> CborValue.Bool(true)
-                    else -> CborValue.Other     // null / float — bytes consumed
-                }
-                else -> null
-            }
-        }
     }
 }

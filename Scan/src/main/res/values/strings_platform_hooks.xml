@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings the *platform* requires as resource references — app-widget
+    provider info and static app shortcuts both declare their label /
+    description attributes as `format="reference"`, so a literal in the XML
+    fails AAPT.
+
+    A separate file (rather than additions to values/strings.xml) keeps the
+    platform-hook surfaces — home-screen widget, Quick Settings tile,
+    long-press shortcuts — self-contained.
+-->
+<resources>
+    <!-- Home-screen widget (RecentScansWidget). -->
+    <string name="widget_recent_scans_label">Recent scans</string>
+    <string name="widget_recent_scans_description">Your most recent scans, one tap back into Scan.</string>
+
+    <!-- Quick Settings tile (ScanTileService). -->
+    <string name="tile_scan_a_code">Scan a code</string>
+
+    <!-- Long-press app-icon shortcuts, mirroring ScanAppShortcuts on iOS. -->
+    <string name="shortcut_scan_short">Scan a code</string>
+    <string name="shortcut_scan_long">Scan a code with Scan</string>
+    <string name="shortcut_generate_short">Generate a code</string>
+    <string name="shortcut_generate_long">Generate a code with Scan</string>
+    <string name="shortcut_recent_short">Recent scans</string>
+    <string name="shortcut_recent_long">See your recent scans</string>
+</resources>

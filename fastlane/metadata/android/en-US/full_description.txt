@@ -18,12 +18,20 @@ Smart payload decomposition
 - Bank payments: EPC SEPA, Swiss QR-bill, Czech SPD, Slovak Pay by Square, EMVCo merchant (Pix, PayNow, PromptPay, UPI, DuitNow, QRIS, FPS, NAPAS, NETS, …), Indian UPI, Bezahlcode, Serbian IPS.
 - Receipts: Russian FNS, Serbian SUF.
 - Travel & identity: IATA boarding passes (PDF417), AAMVA driver's licences.
-- Digital identity: DigiD, EUDI Wallet, OpenID4VC — flagged with a security warning.
+- Digital identity: DigiD, EUDI Wallet, OpenID4VP / OpenID4VCI, ISO 18013-5 mdoc — decoded with a security warning.
 - Loyalty cards: tag a product barcode with a merchant and pin it to History favourites.
+
+Safety and insight
+- QR safety check: look-alike and disguised addresses, address-bar tricks, risky links, preset payment amounts and two codes stuck on top of each other are flagged before you act; a dangerous link offers Copy instead of Open.
+- "What is this code?" plain-language explanations, with passwords and secrets blanked out.
+- Live Text (Latin script) and Bulk scan modes; translation of scanned text.
+- NFC tag read and write.
+- Digital ID (mdoc, OpenID4VP / VCI, SD-JWT), passkey QR, EN 16931 e-invoices and Digital Product Passports — decoded only.
+- Home-screen widget, Quick Settings tile and launcher shortcuts.
 
 Generation
 - Build QR / Aztec / PDF417 / Code 128 from text, URLs, contacts, or Wi-Fi credentials.
-- Custom foreground / background colours with a contrast warning.
+- Custom foreground / background colours with a contrast warning, or a style: shaped modules and eyes, gradients, presets.
 - Embed a centred logo in QR codes.
 - Export as PNG, SVG, or PDF.
 
@@ -37,7 +45,8 @@ App Links
 - Scan handles https://nettrash.me/scan/<base64url-payload> links — opening such a link from anywhere on the device drops you straight into the result sheet.
 
 Privacy
-- 100% on-device. No accounts. No analytics. No ads. No trackers.
+- Scanned content is processed on the device and never uploaded. No accounts. No ads.
+- Google's ML Kit (barcodes, Live Text, translation) sends Google diagnostic statistics, and downloads a translation language model only after you agree.
 - Camera, Photos / Files, and image-import access only when you ask.
 - History is local Room storage. Android Auto Backup will carry it to your Google account if you have backup enabled — nothing leaves the device otherwise.
 

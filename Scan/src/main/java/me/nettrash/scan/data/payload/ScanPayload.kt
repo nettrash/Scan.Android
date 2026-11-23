@@ -54,6 +54,11 @@ sealed class ScanPayload {
     data class Iban(val payload: IBANPayload) : ScanPayload()
     // New in 1.10.
     data class Passkey(val payload: PasskeyPayload) : ScanPayload()
+    // Also 1.10: digital identity, product passports and e-invoices.
+    data class MobileDrivingLicense(val payload: MobileDrivingLicensePayload) : ScanPayload()
+    data class VerifiableCredential(val payload: VerifiableCredentialPayload) : ScanPayload()
+    data class EInvoice(val payload: InvoicePayload) : ScanPayload()
+    data class DigitalProductPassport(val payload: DigitalProductPassportPayload) : ScanPayload()
     data class Text(val text: String) : ScanPayload()
 
     /** Short label describing the payload kind, for UI badges. */
@@ -93,6 +98,10 @@ sealed class ScanPayload {
             is What3Words -> "what3words"
             is Iban -> "IBAN"
             is Passkey -> "Passkey"
+            is MobileDrivingLicense -> payload.kindLabel
+            is VerifiableCredential -> payload.kindLabel
+            is EInvoice -> "E-Invoice"
+            is DigitalProductPassport -> "Product Passport"
             is Text -> "Text"
         }
 }
@@ -108,6 +117,19 @@ data class ContactPayload(
 )
 
 object ScanPayloadParser {
+
+    /**
+     * A GS1 carrier that also spells out a product passport gets its own
+     * kind, because the question it answers ("what is this made of, where is
+     * it from, when does it end") is different from a plain product code.
+     * Mirrors the iOS `classifyGS1`.
+     */
+    private fun classifyGS1(payload: GS1Payload): ScanPayload =
+        if (DigitalProductPassportParser.looksLikePassport(payload)) {
+            ScanPayload.DigitalProductPassport(DigitalProductPassportParser.parse(payload))
+        } else {
+            ScanPayload.GS1(payload)
+        }
 
     /**
      * Parse a decoded barcode string into a structured payload.
@@ -140,6 +162,33 @@ object ScanPayloadParser {
         // phone-as-authenticator flow.
         if (PasskeyParser.looksLikePasskey(trimmed)) {
             PasskeyParser.parse(trimmed)?.let { return ScanPayload.Passkey(it) }
+        }
+
+        // ISO/IEC 18013-5 mdoc engagement — `mdoc:`, the QR a digital-ID
+        // wallet shows an ID reader (or a reader shows a wallet), and its
+        // ISO/IEC 18013-7 online form `mdoc://`. `mdoc-openid4vp://` is not
+        // this scheme: it is an OpenID4VP request, for the parser below.
+        if (MobileDrivingLicenseParser.looksLikeMdocURI(trimmed)) {
+            MobileDrivingLicenseParser.parse(trimmed)?.let {
+                return ScanPayload.MobileDrivingLicense(it)
+            }
+        }
+
+        // eIDAS 2.0 / OpenID4VP: a wallet presentation request, a credential
+        // offer, or an SD-JWT VC / VP JWT token. Checked before the URL
+        // fallback because `openid4vp://` is a URI a generic parser would
+        // hand to a browser, which can do nothing with it.
+        if (VerifiableCredentialParser.looksLikeCredentialRequest(trimmed) ||
+            VerifiableCredentialParser.looksLikeCredentialToken(trimmed)
+        ) {
+            VerifiableCredentialParser.parse(trimmed)?.let {
+                return ScanPayload.VerifiableCredential(it)
+            }
+        }
+
+        // Electronic invoice (EN 16931 CII / ZUGFeRD / XRechnung).
+        if (InvoiceParser.looksLikeEInvoice(trimmed)) {
+            InvoiceParser.parse(trimmed)?.let { return ScanPayload.EInvoice(it) }
         }
 
         // EPC SEPA Payment QR — line 1 is "BCD".
@@ -278,7 +327,7 @@ object ScanPayloadParser {
 
         // GS1 — parens / FNC1 forms (Digital Link is a URL, handled below).
         if (trimmed.startsWith("(") && GS1Parser.looksLikeGS1(trimmed)) {
-            GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+            GS1Parser.parse(trimmed)?.let { return classifyGS1(it) }
         }
         // FNC1 form. The group separator identifies it *wherever* it falls,
         // not only in first position: FNC1 at the start of a symbol is a
@@ -290,7 +339,7 @@ object ScanPayloadParser {
         // `looksLikeGS1` still has to agree, so a string that merely happens
         // to contain a separator is not dragged in.
         if (trimmed.any { it.code == 0x1D } && GS1Parser.looksLikeGS1(trimmed)) {
-            GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+            GS1Parser.parse(trimmed)?.let { return classifyGS1(it) }
         }
 
         // what3words — `///word.word.word` or `w3w://…`.
@@ -314,7 +363,7 @@ object ScanPayloadParser {
         if (sch == "http" || sch == "https") {
             // GS1 Digital Link first (host-agnostic).
             if (GS1Parser.looksLikeGS1(trimmed)) {
-                GS1Parser.parse(trimmed)?.let { return ScanPayload.GS1(it) }
+                GS1Parser.parse(trimmed)?.let { return classifyGS1(it) }
             }
             // Rich-URL flavour next — Maps URLs are re-classified to .Geo
             // when we can pull coordinates out, so the user gets the same

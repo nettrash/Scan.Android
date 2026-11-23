@@ -5,61 +5,77 @@ This file mirrors every Data Safety question Play Console asks for the
 form structure as of 2026 and the actual data-handling described in
 `PRIVACY_POLICY.md`.
 
+> **Re-answer the form in Play Console before the 1.10 rollout.** Up to 1.9
+> the form said "No data collected". That was already generous for the
+> bundled ML Kit barcode scanner (which sends Google diagnostics), and 1.10
+> adds ML Kit text recognition, language identification and translation,
+> whose Firebase installation ID, remote-configuration and telemetry calls
+> are verified (a recording proxy saw `firebaseinstallations.googleapis.com`
+> on every `Translation.getClient`). The answers below describe 1.10. Items
+> marked *(owner decision)* need a judgement call, not just transcription.
+
+## What leaves the device in 1.10 (the facts behind the answers)
+
+Scan's own code makes no network requests. Everything below is done by the
+Google ML Kit SDK (`barcode-scanning`, `text-recognition`, `language-id`,
+`translate`):
+
+| Data | When | Recipient |
+| --- | --- | --- |
+| ML Kit diagnostics and usage statistics (device model, OS version, app package and version, per-installation identifiers, API settings, latency, input/output sizes, event types, error codes, language pair for translation / detected language) | Automatically, batched in the background, whenever an ML Kit feature runs — including plain barcode scanning | Google (`firebaselogging.googleapis.com`) |
+| Firebase installation ID + remote-configuration request (device language and region, time zone, Android and app version, app ID) | Whenever a translator is created: each Translate tap and each model download | Google (`firebaseinstallations.googleapis.com`, `firebaseremoteconfig.googleapis.com`) |
+| Language-model download (no user data in the request beyond the language code) | Only after the user agrees in Scan's download dialog | Google (`dl.google.com`) |
+
+Never sent: camera frames, imported images, decoded codes, recognised or
+translated text, scan history.
+
 ## 1. Data collection and security
 
 > Does your app collect or share any of the required user data types?
 
-**No.**
-
-Scan does not collect or transmit any personal data. Camera frames are
-processed by an on-device ML Kit model and discarded; saved scans live in
-the app's private Room database; generated images are written to the user's
-own MediaStore folder. Nothing leaves the device.
+**Yes** — collected by the Google ML Kit SDK (see the table above).
 
 > Is all of the user data collected by your app encrypted in transit?
 
-**Not applicable** (no data is collected or transmitted).
+**Yes** (ML Kit uses HTTPS).
 
 > Do you provide a way for users to request that their data be deleted?
 
-**Not applicable** (no data is collected). Users can clear local history
-themselves by deleting scans from the History tab, or by uninstalling the
-app or clearing app storage from Android Settings.
+**No.** Scan has no account and no server; the data above is held by Google
+under its own terms. Users clear local history themselves by deleting scans,
+clearing app storage or uninstalling.
 
 ## 2. Data types
 
-For every data type Play lists, the answer is **"No, my app does not
-collect or share this data"**:
+Declare as **collected** (not shared — Google receives it as the SDK /
+service provider; confirm this reading of Play's "sharing" definition
+*(owner decision)*):
 
-- Personal info (name, email, address, user IDs, phone, race/ethnicity,
-  political/religious beliefs, sexual orientation, other).
-- Financial info (payment info, purchase history, credit score, other).
-- Health and fitness.
-- Messages (emails, SMS or MMS, other in-app messages).
-- Photos and videos.
-- Audio files.
-- Files and docs.
-- Calendar events.
-- Contacts.
-- App activity (page views, in-app search history, installed apps,
-  other actions, other history).
-- Web browsing.
-- App info and performance (crash logs, diagnostics, performance data).
-- Device or other IDs.
-- Location (approximate or precise).
+- **App info and performance → Diagnostics.** Purpose: Analytics (ML Kit's
+  own performance and usage statistics). Collection is **required** (ML Kit
+  offers no switch), **not** processed ephemerally.
+- **Device or other IDs.** ML Kit's per-installation identifier and the
+  Firebase installation ID. Purposes: Analytics; App functionality (remote
+  configuration for translation). Required.
+- **App activity → Other actions** — ML Kit logs which of its features were
+  used (event types). Declare it or argue it is covered by Diagnostics
+  *(owner decision)*.
 
-The "Photos and videos" category is worth flagging in your own notes:
-the app *does* read an image when the user explicitly picks one with the
-Photo Picker, but Play's definition of "collect" is "transmit off the
-device or persist beyond the current session in a way the user did not
-initiate". The picked image is read in-memory and discarded after decoding,
-so it is not collected.
+Everything else stays **"No, my app does not collect or share this data"**:
+personal info, financial info, health and fitness, messages, photos and
+videos, audio, files and docs, calendar, contacts, web browsing, location,
+and app activity other than the item above.
+
+The "Photos and videos" category is worth flagging in your own notes: the
+app *does* read an image when the user explicitly picks one with the Photo
+Picker, but it is decoded in memory on the device and never transmitted, so
+it is not collected.
 
 ## 3. Security practices
 
 > Is data encrypted in transit?
 
-**Not applicable** (no data in transit).
+**Yes.**
 
 > Does the app follow the Families Policy?
 
@@ -74,7 +90,8 @@ been done).
 
 > Does your app contain ads?
 
-**No.**
+**No.** The Advertising ID is not used (no `AD_ID` permission in the merged
+manifest).
 
 ## 5. Government apps / Financial apps / Health apps / News apps
 
